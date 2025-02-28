@@ -1,8 +1,8 @@
 // DOM要素の参照を取得
 document.addEventListener('DOMContentLoaded', function() {
     // バックエンドAPIのベースURL（開発環境と本番環境で切り替え）
-    const API_BASE_URL = 'http://localhost:3000'; // 開発環境
-    // const API_BASE_URL = 'https://your-domain.com'; // 本番環境
+    // const API_BASE_URL = 'http://localhost:3000'; // 開発環境
+    const API_BASE_URL = 'https://systematic-review-api.onrender.com'; // 本番環境
     
     // フォームと結果セクションの要素
     var searchForm = document.getElementById('searchForm');

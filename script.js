@@ -1,5 +1,9 @@
 // DOM要素の参照を取得
 document.addEventListener('DOMContentLoaded', function() {
+    // バックエンドAPIのベースURL（開発環境と本番環境で切り替え）
+    const API_BASE_URL = 'http://localhost:3000'; // 開発環境
+    // const API_BASE_URL = 'https://your-domain.com'; // 本番環境
+    
     // フォームと結果セクションの要素
     var searchForm = document.getElementById('searchForm');
     var initialForm = document.getElementById('initialForm');
@@ -110,11 +114,11 @@ document.addEventListener('DOMContentLoaded', function() {
         showSection(loadingSection);
         
         try {
-            // OpenAI APIを使用して検索式を生成
+            // バックエンドAPIを使用して検索式を生成
             var searchExpression = await generateSearchExpression(currentQuery);
             currentSearchExpression = searchExpression;
             
-            // PubMed APIで検索結果数を取得
+            // バックエンドAPIでPubMedの検索結果数を取得
             var count = await getArticleCount(searchExpression);
             
             // 結果の表示
@@ -155,7 +159,7 @@ document.addEventListener('DOMContentLoaded', function() {
             var searchExpression = await generateSearchExpression(currentQuery, true);
             currentSearchExpression = searchExpression;
             
-            // PubMed APIで検索結果数を取得
+            // バックエンドAPIでPubMedの検索結果数を取得
             var count = await getArticleCount(searchExpression);
             
             // 結果の表示
@@ -176,7 +180,7 @@ document.addEventListener('DOMContentLoaded', function() {
         showSection(loadingSection);
         
         try {
-            // PubMed APIで検索結果を取得
+            // バックエンドAPIでPubMedの検索結果を取得
             var results = await getSearchResults(currentSearchExpression);
             searchResults = results;
             
@@ -224,7 +228,7 @@ document.addEventListener('DOMContentLoaded', function() {
         exportToCSV(searchResults);
     };
     
-    // OpenAI APIを使用して検索式を生成する関数
+    // バックエンドAPIを使用して検索式を生成する関数
     async function generateSearchExpression(query, alternative = false) {
         try {
             // 検索クエリと条件の整形
@@ -268,11 +272,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 promptText += "\n- 過去5年間に出版された論文のみに限定するフィルターを含めてください";
             }
             
-            const response = await fetch(API_ENDPOINTS.openai, {
+            // バックエンドAPIにリクエスト
+            const response = await fetch(`${API_BASE_URL}/api/openai`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${API_KEYS.openai}`
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
                     model: "gpt-4o",
@@ -291,7 +295,7 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             
             if (!response.ok) {
-                throw new Error(`OpenAI API エラー: ${response.status}`);
+                throw new Error(`API エラー: ${response.status}`);
             }
             
             const data = await response.json();
@@ -304,17 +308,17 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // PubMed APIで検索結果数を取得する関数
+    // バックエンドAPIで検索結果数を取得する関数
     async function getArticleCount(searchExpression) {
         try {
             // 検索式をエンコード
             const encodedSearchTerm = encodeURIComponent(searchExpression);
             
-            // PubMed APIから検索結果数を取得
-            const response = await fetch(`${API_ENDPOINTS.pubmedSearch}?term=${encodedSearchTerm}&retmax=0&format=json&api_key=${API_KEYS.pubmed}`);
+            // バックエンドAPIから検索結果数を取得
+            const response = await fetch(`${API_BASE_URL}/api/pubmed/search?term=${encodedSearchTerm}&retmax=0`);
             
             if (!response.ok) {
-                throw new Error(`PubMed API エラー: ${response.status}`);
+                throw new Error(`API エラー: ${response.status}`);
             }
             
             const data = await response.json();
@@ -325,17 +329,17 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // PubMed APIで検索結果を取得する関数
+    // バックエンドAPIで検索結果を取得する関数
     async function getSearchResults(searchExpression) {
         try {
             // 検索式をエンコード
             const encodedSearchTerm = encodeURIComponent(searchExpression);
             
             // 最初のステップ: 検索クエリに一致するPubMed IDのリストを取得
-            const searchResponse = await fetch(`${API_ENDPOINTS.pubmedSearch}?term=${encodedSearchTerm}&retmax=30&format=json&api_key=${API_KEYS.pubmed}`);
+            const searchResponse = await fetch(`${API_BASE_URL}/api/pubmed/search?term=${encodedSearchTerm}&retmax=30`);
             
             if (!searchResponse.ok) {
-                throw new Error(`PubMed Search API エラー: ${searchResponse.status}`);
+                throw new Error(`API エラー: ${searchResponse.status}`);
             }
             
             const searchData = await searchResponse.json();
@@ -346,16 +350,16 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             // 第二ステップ: PubMed IDを使用して論文の詳細情報を取得
-            const summaryResponse = await fetch(`${API_ENDPOINTS.pubmedSummary}?id=${pmids.join(',')}&format=json&api_key=${API_KEYS.pubmed}`);
+            const summaryResponse = await fetch(`${API_BASE_URL}/api/pubmed/summary?id=${pmids.join(',')}`);
             
             if (!summaryResponse.ok) {
-                throw new Error(`PubMed Summary API エラー: ${summaryResponse.status}`);
+                throw new Error(`API エラー: ${summaryResponse.status}`);
             }
             
             const summaryData = await summaryResponse.json();
             
             // 論文データを整形
-            const articles = await Promise.all(pmids.map(async (pmid) => {
+            const articlesPromises = pmids.map(async (pmid) => {
                 const article = summaryData.result[pmid];
                 
                 if (!article) {
@@ -376,7 +380,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 // 抄録の要約
                 let abstractSummary = 'Abstract not available';
                 if (article.abstract) {
-                    // 抄録がある場合、OpenAI APIを使用して要約を生成
+                    // 抄録がある場合、バックエンドAPIを使用して要約を生成
                     abstractSummary = await generateAbstractSummary(article.abstract);
                 }
                 
@@ -390,7 +394,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     authors,
                     abstractSummary
                 };
-            }));
+            });
+            
+            const articles = await Promise.all(articlesPromises);
             
             // nullを除外
             return articles.filter(article => article !== null);
@@ -400,14 +406,13 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // OpenAI APIを使用して抄録を要約する関数
+    // バックエンドAPIを使用して抄録を要約する関数
     async function generateAbstractSummary(abstract) {
         try {
-            const response = await fetch(API_ENDPOINTS.openai, {
+            const response = await fetch(`${API_BASE_URL}/api/openai`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${API_KEYS.openai}`
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
                     model: "gpt-4o",
@@ -426,7 +431,7 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             
             if (!response.ok) {
-                throw new Error(`OpenAI API エラー: ${response.status}`);
+                throw new Error(`API エラー: ${response.status}`);
             }
             
             const data = await response.json();

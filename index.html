@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>システマティックレビュー検索アシスタント</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>システマティックレビュー検索アシスタント</h1>
+            <p>日本語で検索内容を入力すると、PubMed用の最適な検索式を提案します</p>
+        </header>
+        
+        <main>
+            <section id="initialForm">
+                <h2>検索内容を入力してください</h2>
+                <form id="searchForm">
+                    <div class="form-group">
+                        <label for="searchQuery">研究テーマ・研究課題（日本語で詳しく入力してください）:</label>
+                        <textarea id="searchQuery" rows="4" placeholder="例: 高血圧患者における減塩指導の血圧低下効果に関するシステマティックレビュー" required></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <h3>システマティックレビューの条件を選択してください</h3>
+                        
+                        <div class="checkbox-group">
+                            <label><input type="checkbox" name="condition" value="human" checked> 人を対象とした研究</label>
+                            <label><input type="checkbox" name="condition" value="adult"> 成人のみを対象</label>
+                            <label><input type="checkbox" name="condition" value="rct"> ランダム化比較試験(RCT)のみ</label>
+                            <label><input type="checkbox" name="condition" value="meta"> メタ分析・システマティックレビューも含める</label>
+                            <label><input type="checkbox" name="condition" value="english"> 英語の論文のみ</label>
+                            <label><input type="checkbox" name="condition" value="lastFiveYears"> 過去5年の論文のみ</label>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" id="generateButton">検索式を生成</button>
+                </form>
+            </section>
+            
+            <section id="loadingSection">
+                <div class="loader"></div>
+                <p>検索式を生成中です...</p>
+            </section>
+            
+            <section id="resultSection">
+                <div id="searchExpressionResult">
+                    <h2>生成された検索式</h2>
+                    <div class="result-box">
+                        <pre id="searchExpression"></pre>
+                        <button id="copySearchExpression" class="copy-button">コピー</button>
+                    </div>
+                    <p id="articleCount"></p>
+                </div>
+                
+                <div class="action-buttons">
+                    <button id="regenerateButton">検索式を再生成</button>
+                    <button id="getResultsButton">検索結果を取得</button>
+                    <button id="backToStart">最初からやり直す</button>
+                </div>
+            </section>
+            
+            <section id="articleResultsSection">
+                <h2>検索結果</h2>
+                <div id="resultsInfo"></div>
+                <div class="results-actions">
+                    <button id="downloadCSV">結果をCSVでダウンロード</button>
+                    <button id="backToSearch">検索式に戻る</button>
+                </div>
+                <div id="articleResults"></div>
+            </section>
+        </main>
+        
+        <footer>
+            <p>© 2025 システマティックレビュー検索アシスタント | <a href="#" id="showAbout">このアプリについて</a></p>
+        </footer>
+        
+        <div id="aboutModal" class="modal">
+            <div class="modal-content">
+                <button id="closeModalBtn">&times;</button>
+                <h2>システマティックレビュー検索アシスタントについて</h2>
+                <p>このアプリは、医療研究者がシステマティックレビューを行う際の文献検索をサポートするツールです。</p>
+                <p>PubMed APIとAI支援を活用して、効率的な検索式の生成と文献スクリーニングをサポートします。</p>
+                <p>特徴:</p>
+                <ul>
+                    <li>日本語での入力から英語の検索式を自動生成</li>
+                    <li>検索結果数の即時確認</li>
+                    <li>検索結果のCSVダウンロード（PubMedのID、URL、タイトル、著者、抄録の要約）</li>
+                    <li>システマティックレビューに適した検索条件の設定</li>
+                </ul>
+                <button id="closeModalButton">閉じる</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="config.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

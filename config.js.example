@@ -1,0 +1,18 @@
+// APIエンドポイントとAPIキーの設定
+// 使用方法: このファイルを「config.js」にコピーしてAPIキーを設定してください
+// 注意: config.js をgitにコミットしないでください
+
+const API_ENDPOINTS = {
+    // OpenAI API エンドポイント
+    openai: 'https://api.openai.com/v1/chat/completions',
+    
+    // PubMed API エンドポイント
+    pubmedSearch: 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi',
+    pubmedSummary: 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi'
+};
+
+const API_KEYS = {
+    // 実際の使用時には、これらのAPIキーを実際のものに置き換えてください
+    openai: 'YOUR_OPENAI_API_KEY_HERE',
+    pubmed: ''  // PubMed APIキー (必要な場合)
+};

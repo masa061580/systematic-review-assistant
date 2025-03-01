@@ -521,6 +521,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // バックエンドAPIで検索結果を取得する関数
     // バックエンドAPIで検索結果を取得する関数内の修正
+    // バックエンドAPIで検索結果を取得する関数
     async function getSearchResults(searchExpression) {
         try {
             // 検索式をエンコード
@@ -543,6 +544,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 return [];
             }
             
+            // デバッグログを追加
+            console.log('検索されたPMID:', pmids);
+            
             console.log('PubMed論文詳細リクエスト送信...');
             
             // 第二ステップ: PubMed IDを使用して論文の詳細情報を取得
@@ -555,73 +559,209 @@ document.addEventListener('DOMContentLoaded', function() {
             
             console.log('PubMed論文詳細取得成功');
             
-            // デバッグ用ログを追加
+            // デバッグ用ログを追加して応答構造を詳細に確認
             console.log('summaryData構造:', {
                 hasResult: !!summaryData.result,
                 resultKeys: summaryData.result ? Object.keys(summaryData.result) : [],
-                firstPmid: pmids[0],
-                firstArticleExists: summaryData.result ? !!summaryData.result[pmids[0]] : false
+                hasUids: summaryData.result && summaryData.result.uids ? 'Yes' : 'No',
+                uidsCount: summaryData.result && summaryData.result.uids ? summaryData.result.uids.length : 0
             });
-
-            // 論文データを整形
+            
+            // レスポンスの完全な構造をコンソールに出力（開発時のみ）
+            // console.log('完全なレスポンス構造:', JSON.stringify(summaryData, null, 2));
+            
+            // 論文データを整形（PubMed APIのさまざまな応答構造に対応）
             const articlesPromises = pmids.map(async (pmid) => {
-                // ここでエラーチェックを追加
-                const article = summaryData.result ? summaryData.result[pmid] : null;
-                
-                // summaryData.resultやarticleがnullまたはundefinedの場合、基本情報だけのオブジェクトを返す
-                if (!article) {
-                    console.warn(`PMID ${pmid} のデータが取得できませんでした`);
+                try {
+                    // 新しいPubMed API応答構造への対応
+                    if (summaryData.result && summaryData.result.uids && summaryData.result[pmid]) {
+                        const article = summaryData.result[pmid];
+                        console.log(`PMID ${pmid} のデータを見つけました（新構造）`);
+                        
+                        // 著者情報を整形
+                        let authors = '';
+                        if (article.authors && article.authors.length > 0) {
+                            authors = article.authors
+                                .map(author => author.name || '')
+                                .join(', ');
+                        }
+                        
+                        // タイトルを取得
+                        const title = article.title || `PMID: ${pmid}`;
+                        
+                        // 出版年を取得
+                        const pubDate = article.pubdate || '';
+                        const year = pubDate.split(' ')[0] || '';
+                        
+                        // ジャーナル名を取得
+                        const journal = article.fulljournalname || article.source || '';
+                        
+                        // 抄録の取得（抄録がない場合は直接PubMedから取得を試みる）
+                        let abstract = article.abstract || '';
+                        if (!abstract) {
+                            try {
+                                abstract = await fetchAbstract(pmid);
+                            } catch (err) {
+                                console.warn(`PMID ${pmid} の抄録取得に失敗:`, err);
+                                abstract = '';
+                            }
+                        }
+                        
+                        // 抄録の要約
+                        let abstractSummary = 'Abstract not available';
+                        if (abstract) {
+                            try {
+                                abstractSummary = await generateAbstractSummary(abstract);
+                            } catch (err) {
+                                console.warn(`PMID ${pmid} の抄録要約に失敗:`, err);
+                                abstractSummary = '抄録の要約を生成できませんでした';
+                            }
+                        }
+                        
+                        // PubMed URL
+                        const pubmedUrl = `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`;
+                        
+                        return {
+                            pmid,
+                            pubmedUrl,
+                            title,
+                            authors,
+                            year,
+                            journal,
+                            abstract,
+                            abstractSummary
+                        };
+                    } 
+                    // 古い構造への対応（廃止予定だが念のため対応）
+                    else if (summaryData.result && summaryData.result[pmid]) {
+                        const article = summaryData.result[pmid];
+                        console.log(`PMID ${pmid} のデータを見つけました（従来構造）`);
+                        
+                        // 以下は上記と同様の処理
+                        let authors = '';
+                        if (article.authors && article.authors.length > 0) {
+                            authors = article.authors
+                                .map(author => author.name || '')
+                                .join(', ');
+                        }
+                        
+                        const title = article.title || `PMID: ${pmid}`;
+                        const pubDate = article.pubdate || '';
+                        const year = pubDate.split(' ')[0] || '';
+                        const journal = article.fulljournalname || article.source || '';
+                        
+                        let abstract = article.abstract || '';
+                        if (!abstract) {
+                            try {
+                                abstract = await fetchAbstract(pmid);
+                            } catch (err) {
+                                console.warn(`PMID ${pmid} の抄録取得に失敗:`, err);
+                                abstract = '';
+                            }
+                        }
+                        
+                        let abstractSummary = 'Abstract not available';
+                        if (abstract) {
+                            try {
+                                abstractSummary = await generateAbstractSummary(abstract);
+                            } catch (err) {
+                                console.warn(`PMID ${pmid} の抄録要約に失敗:`, err);
+                                abstractSummary = '抄録の要約を生成できませんでした';
+                            }
+                        }
+                        
+                        const pubmedUrl = `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`;
+                        
+                        return {
+                            pmid,
+                            pubmedUrl,
+                            title,
+                            authors,
+                            year,
+                            journal,
+                            abstract,
+                            abstractSummary
+                        };
+                    }
+                    // データが見つからない場合、PubMedから直接情報を取得
+                    else {
+                        console.log(`PMID ${pmid} のデータが見つかりません - 直接取得を試みます`);
+                        
+                        // PubMed URLは常に生成できる
+                        const pubmedUrl = `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`;
+                        
+                        // 抄録を直接取得
+                        let abstract = '';
+                        try {
+                            abstract = await fetchAbstract(pmid);
+                        } catch (err) {
+                            console.warn(`PMID ${pmid} の抄録直接取得に失敗:`, err);
+                        }
+                        
+                        // 抄録から情報を抽出
+                        let title = `PMID: ${pmid}`;
+                        let abstractSummary = '抄録を取得できませんでした';
+                        
+                        if (abstract && abstract.length > 10) {
+                            // 抄録がある場合、タイトル情報を取得してみる
+                            try {
+                                const titleData = await fetchWithRetry(`${API_BASE_URL}/api/openai`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json'
+                                    },
+                                    body: JSON.stringify({
+                                        model: "gpt-4o",
+                                        messages: [
+                                            {
+                                                role: "system",
+                                                content: "あなたは医学論文の抄録からタイトルと著者名を抽出する専門家です。"
+                                            },
+                                            {
+                                                role: "user",
+                                                content: `以下の医学論文の抄録から、論文のタイトルを抽出してください。タイトルが抄録に含まれていない場合は、論文の内容を表す適切なタイトルを提案してください。タイトルのみを返してください。\n\n${abstract}`
+                                            }
+                                        ],
+                                        temperature: 0.3
+                                    })
+                                });
+                                
+                                title = titleData.choices[0].message.content.trim();
+                                
+                                // 抄録の要約も生成
+                                abstractSummary = await generateAbstractSummary(abstract);
+                            } catch (err) {
+                                console.warn(`PMID ${pmid} のタイトル/要約生成に失敗:`, err);
+                                abstractSummary = '抄録はありますが、要約の生成に失敗しました';
+                            }
+                        }
+                        
+                        return {
+                            pmid,
+                            pubmedUrl,
+                            title,
+                            authors: '',
+                            year: '',
+                            journal: '',
+                            abstract: abstract || '',
+                            abstractSummary
+                        };
+                    }
+                } catch (error) {
+                    console.error(`PMID ${pmid} の処理中にエラーが発生しました:`, error);
+                    
+                    // エラーが発生しても処理を継続するために基本情報を返す
                     return {
                         pmid,
                         pubmedUrl: `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`,
-                        title: `PMID: ${pmid} (詳細情報を取得できませんでした)`,
+                        title: `PMID: ${pmid} (処理中にエラーが発生しました)`,
                         authors: '',
                         year: '',
                         journal: '',
                         abstract: '',
-                        abstractSummary: '抄録を取得できませんでした'
+                        abstractSummary: 'エラーが発生したため、要約を生成できませんでした'
                     };
                 }
-                
-                // 以下は元のコードと同じ
-                // 著者情報を整形
-                let authors = '';
-                if (article.authors && article.authors.length > 0) {
-                    authors = article.authors
-                        .map(author => `${author.name || ''}`)
-                        .join(', ');
-                }
-                
-                // タイトルを取得
-                const title = article.title || 'タイトルなし';
-                
-                // 出版年を取得
-                const pubDate = article.pubdate || '';
-                const year = pubDate.split(' ')[0] || '';
-                
-                // ジャーナル名を取得
-                const journal = article.fulljournalname || article.source || '';
-                
-                // 抄録の要約
-                let abstractSummary = 'Abstract not available';
-                if (article.abstract) {
-                    // 抄録がある場合、バックエンドAPIを使用して要約を生成
-                    abstractSummary = await generateAbstractSummary(article.abstract);
-                }
-                
-                // PubMed URL
-                const pubmedUrl = `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`;
-                
-                return {
-                    pmid,
-                    pubmedUrl,
-                    title,
-                    authors,
-                    year,
-                    journal,
-                    abstract: article.abstract || '',
-                    abstractSummary
-                };
             });
             
             const articles = await Promise.all(articlesPromises);
@@ -633,7 +773,7 @@ document.addEventListener('DOMContentLoaded', function() {
             throw new Error('検索結果の取得に失敗しました: ' + error.message);
         }
     }
-    
+        
     // 詳細情報付き検索結果を取得する関数
     async function getEnhancedResults(basicResults) {
         try {
@@ -702,10 +842,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // PubMedから抄録を取得する関数の改善版
+    // 抄録を直接取得するための改善した関数
     async function fetchAbstract(pmid) {
         try {
-            console.log(`PMID ${pmid} の抄録を取得中...`);
+            console.log(`PMID ${pmid} の抄録を直接取得中...`);
             
             const response = await fetchWithRetry(`${API_BASE_URL}/api/pubmed/fetch?id=${pmid}&rettype=abstract`, {
                 method: 'GET',
@@ -722,13 +862,13 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             console.log(`PMID ${pmid} の抄録は利用できません`);
-            return "Abstract not available";
+            return "";
         } catch (error) {
             console.error(`PMID ${pmid} の抄録取得中にエラーが発生しました:`, error);
-            return "Abstract could not be retrieved";
+            return "";
         }
     }
-    
+        
     // 研究デザインを判定する関数の改善版
     async function determineStudyDesign(abstract) {
         try {

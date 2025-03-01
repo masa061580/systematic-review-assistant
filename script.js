@@ -477,12 +477,16 @@ document.addEventListener('DOMContentLoaded', function() {
                             content: promptText
                         }
                     ],
-                    temperature: 0.7
+                    temperature: 0.1
                 })
             });
             
             console.log('OpenAI APIレスポンス成功');
-            const searchExpression = data.choices[0].message.content.trim();
+            let searchExpression = data.choices[0].message.content.trim();
+            
+            // 以下の処理を追加
+            // ```plaintext や ``` などのマークダウンコード囲みを削除
+            searchExpression = searchExpression.replace(/```(?:plaintext)?\s*([\s\S]*?)\s*```/g, '$1');
             
             return searchExpression;
         } catch (error) {

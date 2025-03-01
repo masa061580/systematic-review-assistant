@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>デバッグページ - システマティックレビュー検索アシスタント</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f4f8;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+        }
+        pre {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .debug-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        #status {
+            font-weight: bold;
+        }
+        .success {
+            color: green;
+        }
+        .error {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>デバッグページ - システマティックレビュー検索アシスタント</h1>
+        
+        <div class="debug-section">
+            <h2>DOM要素の確認</h2>
+            <button id="checkElements">DOM要素をチェック</button>
+            <div id="elementsResults"></div>
+        </div>
+        
+        <div class="debug-section">
+            <h2>config.js 読み込みテスト</h2>
+            <button id="checkConfig">config.jsをチェック</button>
+            <div id="configResults"></div>
+        </div>
+        
+        <div class="debug-section">
+            <h2>APIエンドポイント接続テスト</h2>
+            <button id="checkApi">APIをテスト</button>
+            <div id="apiResults"></div>
+        </div>
+        
+        <div class="debug-section">
+            <h2>ConsoleログのコピーをOracle</h2>
+            <div id="consoleLog"></div>
+        </div>
+    </div>
+
+    <script>
+        // デバッグコンソールの設定
+        const originalConsoleLog = console.log;
+        const consoleLogDiv = document.getElementById('consoleLog');
+        
+        console.log = function() {
+            // 元のconsole.logを呼び出す
+            originalConsoleLog.apply(console, arguments);
+            
+            // コンソールログをDIVに表示
+            const message = Array.from(arguments).map(arg => {
+                if (typeof arg === 'object') {
+                    return JSON.stringify(arg, null, 2);
+                } else {
+                    return arg;
+                }
+            }).join(' ');
+            
+            const logEntry = document.createElement('pre');
+            logEntry.textContent = message;
+            consoleLogDiv.appendChild(logEntry);
+        };
+        
+        // DOM要素チェック
+        document.getElementById('checkElements').addEventListener('click', function() {
+            const elementsToCheck = [
+                'searchForm', 'initialForm', 'loadingSection', 'resultSection',
+                'articleResultsSection', 'searchExpression', 'articleCount',
+                'articleResults', 'resultsInfo', 'copySearchExpression',
+                'regenerateButton', 'getResultsButton', 'backToStart',
+                'downloadCSV', 'backToSearch', 'showAbout', 'aboutModal'
+            ];
+            
+            const results = document.getElementById('elementsResults');
+            results.innerHTML = '<h3>DOM要素の確認結果:</h3>';
+            
+            let allExists = true;
+            const list = document.createElement('ul');
+            
+            elementsToCheck.forEach(id => {
+                const elem = document.getElementById(id);
+                const item = document.createElement('li');
+                
+                if (elem) {
+                    item.textContent = `${id}: 存在します`;
+                    item.style.color = 'green';
+                } else {
+                    item.textContent = `${id}: 存在しません`;
+                    item.style.color = 'red';
+                    allExists = false;
+                }
+                
+                list.appendChild(item);
+            });
+            
+            results.appendChild(list);
+            
+            if (!allExists) {
+                const message = document.createElement('p');
+                message.textContent = '一部の要素が見つかりません。index.htmlファイルが正しく読み込まれているか確認してください。';
+                message.style.color = 'red';
+                message.style.fontWeight = 'bold';
+                results.appendChild(message);
+            }
+        });
+        
+        // config.jsチェック
+        document.getElementById('checkConfig').addEventListener('click', function() {
+            const results = document.getElementById('configResults');
+            results.innerHTML = '<h3>config.jsの確認結果:</h3>';
+            
+            try {
+                // API_ENDPOINTSとAPI_KEYSがグローバルスコープで定義されているか確認
+                if (typeof API_ENDPOINTS !== 'undefined' && typeof API_KEYS !== 'undefined') {
+                    const configInfo = document.createElement('pre');
+                    configInfo.textContent = JSON.stringify({
+                        API_ENDPOINTS: API_ENDPOINTS,
+                        API_KEYS_DEFINED: (API_KEYS.openai !== undefined && API_KEYS.pubmed !== undefined)
+                    }, null, 2);
+                    
+                    results.appendChild(configInfo);
+                    
+                    const status = document.createElement('p');
+                    status.textContent = 'config.jsが正しく読み込まれています。';
+                    status.className = 'success';
+                    results.appendChild(status);
+                } else {
+                    throw new Error('config.jsの変数が見つかりません');
+                }
+            } catch (error) {
+                console.error('config.jsチェックエラー:', error);
+                
+                const errorMsg = document.createElement('p');
+                errorMsg.textContent = `エラー: ${error.message}`;
+                errorMsg.className = 'error';
+                results.appendChild(errorMsg);
+                
+                const helpText = document.createElement('p');
+                helpText.innerHTML = `
+                    config.jsファイルが存在するか確認してください。<br>
+                    index.htmlにconfig.jsの読み込みが含まれているか確認してください: <br>
+                    <code>&lt;script src="config.js"&gt;&lt;/script&gt;</code>
+                `;
+                results.appendChild(helpText);
+            }
+        });
+        
+        // API接続テスト
+        document.getElementById('checkApi').addEventListener('click', async function() {
+            const results = document.getElementById('apiResults');
+            results.innerHTML = '<h3>API接続テスト結果:</h3>';
+            
+            const testUrl = 'https://systematic-review-api.onrender.com';
+            const statusElem = document.createElement('p');
+            statusElem.textContent = 'テスト中...';
+            results.appendChild(statusElem);
+            
+            try {
+                const response = await fetch(`${testUrl}/api/pubmed/search?term=test&retmax=1`);
+                
+                if (response.ok) {
+                    statusElem.textContent = 'API接続成功！';
+                    statusElem.className = 'success';
+                    
+                    const data = await response.json();
+                    const dataDisplay = document.createElement('pre');
+                    dataDisplay.textContent = JSON.stringify(data, null, 2);
+                    results.appendChild(dataDisplay);
+                } else {
+                    statusElem.textContent = `API接続エラー: ${response.status} ${response.statusText}`;
+                    statusElem.className = 'error';
+                }
+            } catch (error) {
+                console.error('API接続テストエラー:', error);
+                statusElem.textContent = `API接続エラー: ${error.message}`;
+                statusElem.className = 'error';
+                
+                const corsInfo = document.createElement('p');
+                corsInfo.innerHTML = `
+                    CORSの問題がある可能性があります。サーバー側のCORS設定が正しいか確認してください。<br>
+                    現在のURLからのリクエストが許可されているか確認してください。
+                `;
+                results.appendChild(corsInfo);
+            }
+        });
+    </script>
+</body>
+</html>

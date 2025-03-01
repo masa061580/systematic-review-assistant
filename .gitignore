@@ -1,5 +1,5 @@
-# APIキーを含むファイル
-config.js
+# 個人用設定ファイル
+# config.js の除外を解除 (GitHub Pages用に安全なバージョンを使用)
 
 # エディタ関連
 .vscode/

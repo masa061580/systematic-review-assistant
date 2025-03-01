@@ -522,6 +522,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // バックエンドAPIで検索結果を取得する関数
     // バックエンドAPIで検索結果を取得する関数内の修正
     // バックエンドAPIで検索結果を取得する関数
+    // バックエンドAPIで検索結果を取得する関数の修正
     async function getSearchResults(searchExpression) {
         try {
             // 検索式をエンコード
@@ -530,7 +531,8 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log('PubMed検索リクエスト送信...');
             
             // 最初のステップ: 検索クエリに一致するPubMed IDのリストを取得
-            const searchData = await fetchWithRetry(`${API_BASE_URL}/api/pubmed/search?term=${encodedSearchTerm}&retmax=30`, {
+            // retmaxを100に増やして、より多くの結果を取得
+            const searchData = await fetchWithRetry(`${API_BASE_URL}/api/pubmed/search?term=${encodedSearchTerm}&retmax=100`, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json'
@@ -558,17 +560,6 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             
             console.log('PubMed論文詳細取得成功');
-            
-            // デバッグ用ログを追加して応答構造を詳細に確認
-            console.log('summaryData構造:', {
-                hasResult: !!summaryData.result,
-                resultKeys: summaryData.result ? Object.keys(summaryData.result) : [],
-                hasUids: summaryData.result && summaryData.result.uids ? 'Yes' : 'No',
-                uidsCount: summaryData.result && summaryData.result.uids ? summaryData.result.uids.length : 0
-            });
-            
-            // レスポンスの完全な構造をコンソールに出力（開発時のみ）
-            // console.log('完全なレスポンス構造:', JSON.stringify(summaryData, null, 2));
             
             // 論文データを整形（PubMed APIのさまざまな応答構造に対応）
             const articlesPromises = pmids.map(async (pmid) => {
@@ -774,7 +765,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
         
-    // 詳細情報付き検索結果を取得する関数
+    // 詳細情報付き検索結果を取得する関数（制限撤廃、進捗表示改善）
     async function getEnhancedResults(basicResults) {
         try {
             // プログレスバーの初期化
@@ -790,7 +781,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 // プログレス表示の更新
                 const progress = Math.round((i / basicResults.length) * 100);
                 progressBarElement.style.width = `${progress}%`;
-                progressStatusElement.textContent = `${i} / ${basicResults.length} 論文を処理中...`;
+                progressStatusElement.textContent = `${i + 1} / ${basicResults.length} 論文を処理中...`;
                 
                 try {
                     // 抄録がない場合はPubMedから直接取得を試みる
@@ -802,8 +793,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     // 研究デザインの判定
                     const studyDesign = await determineStudyDesign(abstract);
                     
-                    // 結果と結論の要約
+                    // 結果の要約
                     const resultsSummary = await summarizeResults(abstract);
+                    
+                    // 結論の要約 (取得するが、CSVには含めない)
                     const conclusionSummary = await summarizeConclusion(abstract);
                     
                     // 拡張情報を追加
@@ -815,7 +808,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         conclusionSummary: conclusionSummary
                     });
                     
-                    // 一部処理済みの結果を表示
+                    // 一部処理済みの結果を表示（頻度を減らして負荷を軽減）
                     if (i % 5 === 0 || i === basicResults.length - 1) {
                         displayEnhancedResults(enhancedArticles);
                     }
@@ -1132,7 +1125,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // 検索結果をCSVとしてエクスポートする関数
+    // 検索結果をCSVとしてエクスポートする関数（結論要約を削除）
     function exportToCSV(results) {
         // CSVヘッダー
         const csvHeader = ['PubMed ID', 'PubMed URL', 'タイトル', '著者', '出版年', 'ジャーナル', '要約'];
@@ -1164,10 +1157,10 @@ document.addEventListener('DOMContentLoaded', function() {
         // CSVファイルのダウンロード
         downloadCSVFile(csvContent, 'pubmed_search_results.csv');
     }
-    
-    // 詳細情報付き検索結果をCSVとしてエクスポートする関数
+
+    // 詳細情報付き検索結果をCSVとしてエクスポートする関数（結論要約を削除）
     function exportEnhancedToCSV(results) {
-        // CSVヘッダー
+        // CSVヘッダー - 結論要約を削除
         const csvHeader = [
             'PubMed ID', 
             'PubMed URL', 
@@ -1176,11 +1169,11 @@ document.addEventListener('DOMContentLoaded', function() {
             '出版年', 
             'ジャーナル', 
             '研究デザイン', 
-            '結果要約', 
-            '結論要約'
+            '結果要約'
+            // '結論要約' - 削除
         ];
         
-        // 各行のデータを作成
+        // 各行のデータを作成 - 結論要約を除外
         const csvRows = results.map(function(article) {
             return [
                 article.pmid,
@@ -1190,8 +1183,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 article.year || '',
                 article.journal || '',
                 article.studyDesign || 'Unknown',
-                article.resultsSummary || '',
-                article.conclusionSummary || ''
+                article.resultsSummary || ''
+                // article.conclusionSummary || '' - 削除
             ];
         });
         
@@ -1209,6 +1202,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // CSVファイルのダウンロード
         downloadCSVFile(csvContent, 'pubmed_detailed_results.csv');
     }
+
     
     // CSVファイルをダウンロードする関数
     function downloadCSVFile(csvContent, filename) {

@@ -518,10 +518,60 @@ document.addEventListener('DOMContentLoaded', function() {
             throw new Error('検索結果数の取得に失敗しました: ' + error.message);
         }
     }
+
     
+    // PubMed APIからのデータ取得を修正するための関数（getSearchResults関数の一部を改良）
+    async function extractArticleDetails(article, pmid) {
+        // 著者情報を整形
+        let authors = '';
+        if (article.authors && article.authors.length > 0) {
+            authors = article.authors
+                .map(author => {
+                    // 名前フィールドが存在するか確認
+                    if (typeof author === 'object' && author.name) {
+                        return author.name;
+                    } else if (typeof author === 'string') {
+                        return author;
+                    }
+                    return '';
+                })
+                .filter(name => name !== '') // 空の名前を除外
+                .join(', ');
+        }
+        
+        // タイトルを取得
+        const title = article.title || `PMID: ${pmid}`;
+        
+        // 出版年を取得（さまざまな形式に対応）
+        let year = '';
+        if (article.pubdate) {
+            // pubdateフィールドを解析
+            const dateMatch = article.pubdate.match(/(\d{4})/);
+            if (dateMatch && dateMatch[1]) {
+                year = dateMatch[1];
+            } else {
+                year = article.pubdate.split(' ')[0] || '';
+            }
+        } else if (article.year) {
+            year = article.year;
+        }
+        
+        // ジャーナル名を取得（複数の可能性に対応）
+        const journal = article.fulljournalname || article.source || article.journal || '';
+        
+        return {
+            authors,
+            title,
+            year,
+            journal
+        };
+    }
+
+
     // バックエンドAPIで検索結果を取得する関数
     // バックエンドAPIで検索結果を取得する関数内の修正
     // 論文データを取得する関数を修正（検索結果処理時の並行処理数を制限）
+    // getSearchResults関数の修正部分（PubMed APIからの情報取得を改善）
     async function getSearchResults(searchExpression) {
         try {
             // 検索式をエンコード
@@ -556,167 +606,221 @@ document.addEventListener('DOMContentLoaded', function() {
             
             console.log('PubMed論文詳細取得成功');
             
-            // 論文データ処理用の配列
-            const articles = [];
+            // レスポンス全体を詳細にログ出力（開発時のみ、問題解決後はコメントアウト）
+            console.log('summaryData構造サンプル:', JSON.stringify(summaryData.result ? {
+                hasUids: !!summaryData.result.uids,
+                firstPmid: pmids[0],
+                firstArticleSample: summaryData.result[pmids[0]] ? {
+                    hasTitle: !!summaryData.result[pmids[0]].title,
+                    hasAuthors: !!summaryData.result[pmids[0]].authors,
+                    firstAuthor: summaryData.result[pmids[0]].authors && summaryData.result[pmids[0]].authors.length > 0 ? 
+                        JSON.stringify(summaryData.result[pmids[0]].authors[0]) : 'なし',
+                    hasPubdate: !!summaryData.result[pmids[0]].pubdate,
+                    hasSource: !!summaryData.result[pmids[0]].source,
+                    hasJournalname: !!summaryData.result[pmids[0]].fulljournalname
+                } : 'データなし'
+            } : 'result欠落', null, 2));
             
-            // レート制限を回避するため、PMIDを小さなバッチに分割して処理
-            // バッチサイズを5に設定
-            const batchSize = 5;
-            
-            // PMIDをバッチ処理
-            for (let i = 0; i < pmids.length; i += batchSize) {
-                const batchPmids = pmids.slice(i, i + batchSize);
-                console.log(`バッチ処理: ${i + 1}～${Math.min(i + batchSize, pmids.length)}/${pmids.length}`);
-                
-                // バッチ内の各PMIDを並行処理
-                const batchPromises = batchPmids.map(async (pmid) => {
-                    try {
-                        // 新しいPubMed API応答構造への対応
-                        if (summaryData.result && summaryData.result.uids && summaryData.result[pmid]) {
-                            const article = summaryData.result[pmid];
-                            
-                            // 著者情報を整形
-                            let authors = '';
-                            if (article.authors && article.authors.length > 0) {
-                                authors = article.authors
-                                    .map(author => author.name || '')
-                                    .join(', ');
-                            }
-                            
-                            // タイトルを取得
-                            const title = article.title || `PMID: ${pmid}`;
-                            
-                            // 出版年を取得
-                            const pubDate = article.pubdate || '';
-                            const year = pubDate.split(' ')[0] || '';
-                            
-                            // ジャーナル名を取得
-                            const journal = article.fulljournalname || article.source || '';
-                            
-                            // 抄録の取得（抄録がない場合は直接PubMedから取得を試みる）
-                            let abstract = article.abstract || '';
-                            if (!abstract) {
-                                abstract = await fetchAbstract(pmid);
-                            }
-                            
-                            // 抄録の要約
-                            let abstractSummary = 'Abstract not available';
-                            if (abstract) {
-                                try {
-                                    abstractSummary = await generateAbstractSummary(abstract);
-                                } catch (err) {
-                                    console.warn(`PMID ${pmid} の抄録要約に失敗:`, err);
-                                    abstractSummary = '抄録の要約を生成できませんでした';
-                                }
-                            }
-                            
-                            // PubMed URL
-                            const pubmedUrl = `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`;
-                            
-                            return {
-                                pmid,
-                                pubmedUrl,
-                                title,
-                                authors,
-                                year,
-                                journal,
-                                abstract,
-                                abstractSummary
-                            };
-                        } 
-                        // 古い構造への対応（省略 - 前回と同様）
-                        else if (summaryData.result && summaryData.result[pmid]) {
-                            // ... 同じ処理を実装 ...
-                            // 簡略化のため省略
-                        }
-                        // データが見つからない場合、PubMedから直接情報を取得
-                        else {
-                            console.log(`PMID ${pmid} のデータが見つかりません - 直接取得を試みます`);
-                            
-                            // PubMed URLは常に生成できる
-                            const pubmedUrl = `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`;
-                            
-                            // 抄録を直接取得（レート制限対策済みの関数を使用）
-                            let abstract = await fetchAbstract(pmid);
-                            
-                            // 抄録から情報を抽出
-                            let title = `PMID: ${pmid}`;
-                            let abstractSummary = '抄録を取得できませんでした';
-                            
-                            if (abstract && abstract.length > 10) {
-                                // 抄録がある場合、タイトル情報を取得してみる
-                                try {
-                                    const titleData = await fetchWithRetry(`${API_BASE_URL}/api/openai`, {
-                                        method: 'POST',
-                                        headers: {
-                                            'Content-Type': 'application/json'
-                                        },
-                                        body: JSON.stringify({
-                                            model: "gpt-4o",
-                                            messages: [
-                                                {
-                                                    role: "system",
-                                                    content: "あなたは医学論文の抄録からタイトルと著者名を抽出する専門家です。"
-                                                },
-                                                {
-                                                    role: "user",
-                                                    content: `以下の医学論文の抄録から、論文のタイトルを抽出してください。タイトルが抄録に含まれていない場合は、論文の内容を表す適切なタイトルを提案してください。タイトルのみを返してください。\n\n${abstract}`
-                                                }
-                                            ],
-                                            temperature: 0.3
-                                        })
-                                    });
-                                    
-                                    title = titleData.choices[0].message.content.trim();
-                                    
-                                    // 抄録の要約も生成
-                                    abstractSummary = await generateAbstractSummary(abstract);
-                                } catch (err) {
-                                    console.warn(`PMID ${pmid} のタイトル/要約生成に失敗:`, err);
-                                    abstractSummary = '抄録はありますが、要約の生成に失敗しました';
-                                }
-                            }
-                            
-                            return {
-                                pmid,
-                                pubmedUrl,
-                                title,
-                                authors: '',
-                                year: '',
-                                journal: '',
-                                abstract: abstract || '',
-                                abstractSummary
-                            };
-                        }
-                    } catch (error) {
-                        console.error(`PMID ${pmid} の処理中にエラーが発生しました:`, error);
+            // 論文データを整形
+            const articlesPromises = pmids.map(async (pmid) => {
+                try {
+                    // 新しいPubMed API応答構造への対応
+                    if (summaryData.result && summaryData.result.uids && summaryData.result[pmid]) {
+                        const article = summaryData.result[pmid];
+                        console.log(`PMID ${pmid} のデータを見つけました（新構造）`);
                         
-                        // エラーが発生しても処理を継続するために基本情報を返す
+                        // 論文の詳細情報を抽出（著者、年、ジャーナル等）
+                        const details = await extractArticleDetails(article, pmid);
+                        
+                        // 抄録の取得（抄録がない場合は直接PubMedから取得を試みる）
+                        let abstract = article.abstract || '';
+                        if (!abstract) {
+                            try {
+                                abstract = await fetchAbstract(pmid);
+                            } catch (err) {
+                                console.warn(`PMID ${pmid} の抄録取得に失敗:`, err);
+                                abstract = '';
+                            }
+                        }
+                        
+                        // 抄録の要約
+                        let abstractSummary = 'Abstract not available';
+                        if (abstract) {
+                            try {
+                                abstractSummary = await generateAbstractSummary(abstract);
+                            } catch (err) {
+                                console.warn(`PMID ${pmid} の抄録要約に失敗:`, err);
+                                abstractSummary = '抄録の要約を生成できませんでした';
+                            }
+                        }
+                        
+                        // PubMed URL
+                        const pubmedUrl = `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`;
+                        
                         return {
                             pmid,
-                            pubmedUrl: `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`,
-                            title: `PMID: ${pmid} (処理中にエラーが発生しました)`,
-                            authors: '',
-                            year: '',
-                            journal: '',
-                            abstract: '',
-                            abstractSummary: 'エラーが発生したため、要約を生成できませんでした'
+                            pubmedUrl,
+                            title: details.title,
+                            authors: details.authors,
+                            year: details.year,
+                            journal: details.journal,
+                            abstract,
+                            abstractSummary
+                        };
+                    } 
+                    // 古い構造への対応
+                    else if (summaryData.result && summaryData.result[pmid]) {
+                        const article = summaryData.result[pmid];
+                        console.log(`PMID ${pmid} のデータを見つけました（従来構造）`);
+                        
+                        // 論文の詳細情報を抽出
+                        const details = await extractArticleDetails(article, pmid);
+                        
+                        // 抄録の取得
+                        let abstract = article.abstract || '';
+                        if (!abstract) {
+                            try {
+                                abstract = await fetchAbstract(pmid);
+                            } catch (err) {
+                                console.warn(`PMID ${pmid} の抄録取得に失敗:`, err);
+                                abstract = '';
+                            }
+                        }
+                        
+                        // 抄録の要約
+                        let abstractSummary = 'Abstract not available';
+                        if (abstract) {
+                            try {
+                                abstractSummary = await generateAbstractSummary(abstract);
+                            } catch (err) {
+                                console.warn(`PMID ${pmid} の抄録要約に失敗:`, err);
+                                abstractSummary = '抄録の要約を生成できませんでした';
+                            }
+                        }
+                        
+                        // PubMed URL
+                        const pubmedUrl = `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`;
+                        
+                        return {
+                            pmid,
+                            pubmedUrl,
+                            title: details.title,
+                            authors: details.authors,
+                            year: details.year,
+                            journal: details.journal,
+                            abstract,
+                            abstractSummary
                         };
                     }
-                });
-                
-                // バッチ内の全てのPMIDを処理
-                const batchResults = await Promise.all(batchPromises);
-                articles.push(...batchResults.filter(article => article !== null));
-                
-                // バッチ間に遅延を入れる（レート制限対策）
-                if (i + batchSize < pmids.length) {
-                    console.log('APIレート制限対策: 次のバッチ処理まで1秒待機...');
-                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    // データが見つからない場合、直接情報取得を試みる
+                    else {
+                        console.log(`PMID ${pmid} のデータが見つかりません - 直接取得を試みます`);
+                        
+                        // PubMed URLは常に生成できる
+                        const pubmedUrl = `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`;
+                        
+                        // 抄録を直接取得
+                        let abstract = '';
+                        try {
+                            abstract = await fetchAbstract(pmid);
+                        } catch (err) {
+                            console.warn(`PMID ${pmid} の抄録直接取得に失敗:`, err);
+                        }
+                        
+                        // デフォルト値を設定
+                        let title = `PMID: ${pmid}`;
+                        let abstractSummary = '抄録を取得できませんでした';
+                        let authors = '';
+                        let year = '';
+                        let journal = '';
+                        
+                        // 抄録から情報抽出を試みる
+                        if (abstract && abstract.length > 10) {
+                            try {
+                                // OpenAI APIを使用して情報を抽出
+                                const metaData = await fetchWithRetry(`${API_BASE_URL}/api/openai`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json'
+                                    },
+                                    body: JSON.stringify({
+                                        model: "gpt-4o",
+                                        messages: [
+                                            {
+                                                role: "system",
+                                                content: "あなたは医学論文の抄録から情報を抽出する専門家です。抄録からタイトル、著者、出版年、ジャーナル名を見つけてください。"
+                                            },
+                                            {
+                                                role: "user",
+                                                content: `以下の医学論文の抄録から、論文のメタデータを抽出してください。
+    以下のJSON形式で返してください:
+    {
+    "title": "論文のタイトル",
+    "authors": "著者名（わかる場合）",
+    "year": "出版年（わかる場合）",
+    "journal": "ジャーナル名（わかる場合）"
+    }
+
+    抄録:
+    ${abstract}`
+                                            }
+                                        ],
+                                        temperature: 0.3
+                                    })
+                                });
+                                
+                                try {
+                                    // JSONパースを試みる
+                                    const extractedData = JSON.parse(metaData.choices[0].message.content);
+                                    title = extractedData.title || title;
+                                    authors = extractedData.authors || authors;
+                                    year = extractedData.year || year;
+                                    journal = extractedData.journal || journal;
+                                } catch (jsonErr) {
+                                    console.warn('メタデータのJSON解析に失敗:', jsonErr);
+                                    // 通常のテキスト応答からタイトルを抽出
+                                    title = metaData.choices[0].message.content.trim().split('\n')[0];
+                                }
+                                
+                                // 抄録の要約も生成
+                                abstractSummary = await generateAbstractSummary(abstract);
+                            } catch (err) {
+                                console.warn(`PMID ${pmid} のメタデータ抽出に失敗:`, err);
+                            }
+                        }
+                        
+                        return {
+                            pmid,
+                            pubmedUrl,
+                            title,
+                            authors,
+                            year,
+                            journal,
+                            abstract: abstract || '',
+                            abstractSummary
+                        };
+                    }
+                } catch (error) {
+                    console.error(`PMID ${pmid} の処理中にエラーが発生しました:`, error);
+                    
+                    // エラーが発生しても処理を継続するために基本情報を返す
+                    return {
+                        pmid,
+                        pubmedUrl: `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`,
+                        title: `PMID: ${pmid} (処理中にエラーが発生しました)`,
+                        authors: '',
+                        year: '',
+                        journal: '',
+                        abstract: '',
+                        abstractSummary: 'エラーが発生したため、要約を生成できませんでした'
+                    };
                 }
-            }
+            });
             
-            return articles;
+            const articles = await Promise.all(articlesPromises);
+            
+            // nullを除外
+            return articles.filter(article => article !== null);
         } catch (error) {
             console.error('検索結果取得中にエラーが発生しました:', error);
             throw new Error('検索結果の取得に失敗しました: ' + error.message);
@@ -1095,28 +1199,37 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // 検索結果をCSVとしてエクスポートする関数
+    // 検索結果をCSVとしてエクスポートする関数の修正版
     function exportToCSV(results) {
         // CSVヘッダー
         const csvHeader = ['PubMed ID', 'PubMed URL', 'タイトル', '著者', '出版年', 'ジャーナル', '要約'];
         
-        // 各行のデータを作成
+        // 各行のデータを作成（データが欠損している場合のチェックを強化）
         const csvRows = results.map(function(article) {
+            // デバッグ用ログ（開発時に確認し、後で削除）
+            console.log('CSV書き出し用データ:', {
+                pmid: article.pmid,
+                authors: article.authors || '',
+                year: article.year || '',
+                journal: article.journal || ''
+            });
+            
             return [
-                article.pmid,
-                article.pubmedUrl,
-                article.title,
-                article.authors,
-                article.year || '',
-                article.journal || '',
-                article.abstractSummary
+                article.pmid || '',
+                article.pubmedUrl || `https://pubmed.ncbi.nlm.nih.gov/${article.pmid}/`,
+                article.title || '',
+                article.authors || '', // 著者データが存在するか確認
+                article.year || '',    // 出版年データが存在するか確認
+                article.journal || '', // ジャーナル名データが存在するか確認
+                article.abstractSummary || ''
             ];
         });
         
         // ヘッダーと行を結合
         const csvData = [csvHeader].concat(csvRows);
         
-        // CSVフォーマットに変換
+        // CSVフォーマットに変換（文字化け対策）
+        const bom = new Uint8Array([0xEF, 0xBB, 0xBF]); // BOMを追加（Excel対応）
         const csvContent = csvData.map(function(row) {
             return row.map(function(cell) {
                 // ダブルクォートでくくり、内部のダブルクォートはエスケープ
@@ -1124,11 +1237,19 @@ document.addEventListener('DOMContentLoaded', function() {
             }).join(',');
         }).join('\n');
         
-        // CSVファイルのダウンロード
-        downloadCSVFile(csvContent, 'pubmed_search_results.csv');
+        // BOMありCSVファイルのダウンロード
+        const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', 'pubmed_search_results.csv');
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     }
-    
-    // 詳細情報付き検索結果をCSVとしてエクスポートする関数
+
+    // 詳細情報付き検索結果をCSVとしてエクスポートする関数の修正版
     function exportEnhancedToCSV(results) {
         // CSVヘッダー
         const csvHeader = [
@@ -1143,15 +1264,24 @@ document.addEventListener('DOMContentLoaded', function() {
             '結論要約'
         ];
         
-        // 各行のデータを作成
+        // 各行のデータを作成（データ欠損対策を強化）
         const csvRows = results.map(function(article) {
+            // デバッグ出力（開発中のみ表示）
+            console.log('詳細CSV書き出し用データ:', {
+                pmid: article.pmid,
+                title: article.title ? article.title.substring(0, 20) + '...' : 'なし',
+                hasAuthors: !!article.authors,
+                hasYear: !!article.year,
+                hasJournal: !!article.journal
+            });
+            
             return [
-                article.pmid,
-                article.pubmedUrl,
-                article.title,
-                article.authors,
-                article.year || '',
-                article.journal || '',
+                article.pmid || '',
+                article.pubmedUrl || `https://pubmed.ncbi.nlm.nih.gov/${article.pmid}/`,
+                article.title || '',
+                article.authors || '',   // 著者データの確認
+                article.year || '',      // 出版年データの確認
+                article.journal || '',   // ジャーナル名データの確認
                 article.studyDesign || 'Unknown',
                 article.resultsSummary || '',
                 article.conclusionSummary || ''
@@ -1161,7 +1291,8 @@ document.addEventListener('DOMContentLoaded', function() {
         // ヘッダーと行を結合
         const csvData = [csvHeader].concat(csvRows);
         
-        // CSVフォーマットに変換
+        // CSVフォーマットに変換（文字化け対策としてBOMを追加）
+        const bom = new Uint8Array([0xEF, 0xBB, 0xBF]); // BOMを追加（Excel対応）
         const csvContent = csvData.map(function(row) {
             return row.map(function(cell) {
                 // ダブルクォートでくくり、内部のダブルクォートはエスケープ
@@ -1169,17 +1300,12 @@ document.addEventListener('DOMContentLoaded', function() {
             }).join(',');
         }).join('\n');
         
-        // CSVファイルのダウンロード
-        downloadCSVFile(csvContent, 'pubmed_detailed_results.csv');
-    }
-    
-    // CSVファイルをダウンロードする関数
-    function downloadCSVFile(csvContent, filename) {
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        // BOMありCSVファイルのダウンロード
+        const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.setAttribute('href', url);
-        link.setAttribute('download', filename);
+        link.setAttribute('download', 'pubmed_detailed_results.csv');
         link.style.visibility = 'hidden';
         document.body.appendChild(link);
         link.click();

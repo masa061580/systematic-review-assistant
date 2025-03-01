@@ -520,27 +520,47 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     
-    // PubMed APIからのデータ取得を修正するための関数（getSearchResults関数の一部を改良）
+    // PubMed APIからのデータ抽出を強化した関数
     async function extractArticleDetails(article, pmid) {
-        // 著者情報を整形
+        // 受け取ったデータの構造をログ出力
+        console.log(`PMID ${pmid} データ構造詳細:`, JSON.stringify({
+            hasTitle: !!article.title,
+            hasAuthors: !!article.authors,
+            authorsType: article.authors ? typeof article.authors : 'undefined',
+            authorsIsArray: article.authors ? Array.isArray(article.authors) : false,
+            authorsSample: article.authors && Array.isArray(article.authors) && article.authors.length > 0 ? 
+                JSON.stringify(article.authors[0]) : 'なし',
+            hasPubdate: !!article.pubdate,
+            hasSource: !!article.source,
+            hasFullJournalName: !!article.fulljournalname
+        }, null, 2));
+        
+        // 著者情報を整形（さまざまな構造に対応）
         let authors = '';
-        if (article.authors && article.authors.length > 0) {
-            authors = article.authors
-                .map(author => {
-                    // 名前フィールドが存在するか確認
-                    if (typeof author === 'object' && author.name) {
-                        return author.name;
-                    } else if (typeof author === 'string') {
-                        return author;
-                    }
-                    return '';
-                })
-                .filter(name => name !== '') // 空の名前を除外
-                .join(', ');
+        if (article.authors) {
+            if (Array.isArray(article.authors)) {
+                authors = article.authors
+                    .map(author => {
+                        // 名前フィールドが存在するか確認
+                        if (typeof author === 'object' && author.name) {
+                            return author.name;
+                        } else if (typeof author === 'string') {
+                            return author;
+                        } else if (typeof author === 'object' && author.lastName) {
+                            // 別の可能性: {lastName: "名字", initials: "イニシャル"} 形式
+                            return `${author.lastName}${author.initials ? ' ' + author.initials : ''}`;
+                        }
+                        return '';
+                    })
+                    .filter(name => name !== '') // 空の名前を除外
+                    .join(', ');
+            } else if (typeof article.authors === 'string') {
+                authors = article.authors;
+            }
         }
         
-        // タイトルを取得
-        const title = article.title || `PMID: ${pmid}`;
+        // タイトルを取得（複数の可能性に対応）
+        const title = article.title || article.docTitle || article.docsum || `PMID: ${pmid}`;
         
         // 出版年を取得（さまざまな形式に対応）
         let year = '';
@@ -554,6 +574,12 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         } else if (article.year) {
             year = article.year;
+        } else if (article.sortpubdate) {
+            // YYYY/MM/DD 形式の可能性
+            const dateMatch = article.sortpubdate.match(/(\d{4})/);
+            if (dateMatch && dateMatch[1]) {
+                year = dateMatch[1];
+            }
         }
         
         // ジャーナル名を取得（複数の可能性に対応）
@@ -572,6 +598,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // バックエンドAPIで検索結果を取得する関数内の修正
     // 論文データを取得する関数を修正（検索結果処理時の並行処理数を制限）
     // getSearchResults関数の修正部分（PubMed APIからの情報取得を改善）
+    // バックエンドAPIで検索結果を取得する関数
     async function getSearchResults(searchExpression) {
         try {
             // 検索式をエンコード
@@ -606,14 +633,20 @@ document.addEventListener('DOMContentLoaded', function() {
             
             console.log('PubMed論文詳細取得成功');
             
-            // レスポンス全体を詳細にログ出力（開発時のみ、問題解決後はコメントアウト）
+            // レスポンス構造を詳細にログ出力
             console.log('summaryData構造サンプル:', JSON.stringify(summaryData.result ? {
                 hasUids: !!summaryData.result.uids,
                 firstPmid: pmids[0],
                 firstArticleSample: summaryData.result[pmids[0]] ? {
                     hasTitle: !!summaryData.result[pmids[0]].title,
                     hasAuthors: !!summaryData.result[pmids[0]].authors,
-                    firstAuthor: summaryData.result[pmids[0]].authors && summaryData.result[pmids[0]].authors.length > 0 ? 
+                    authorsType: summaryData.result[pmids[0]].authors ? 
+                        typeof summaryData.result[pmids[0]].authors : 'undefined',
+                    authorsIsArray: summaryData.result[pmids[0]].authors ? 
+                        Array.isArray(summaryData.result[pmids[0]].authors) : false,
+                    firstAuthor: summaryData.result[pmids[0]].authors && 
+                        Array.isArray(summaryData.result[pmids[0]].authors) && 
+                        summaryData.result[pmids[0]].authors.length > 0 ? 
                         JSON.stringify(summaryData.result[pmids[0]].authors[0]) : 'なし',
                     hasPubdate: !!summaryData.result[pmids[0]].pubdate,
                     hasSource: !!summaryData.result[pmids[0]].source,
@@ -628,6 +661,19 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (summaryData.result && summaryData.result.uids && summaryData.result[pmid]) {
                         const article = summaryData.result[pmid];
                         console.log(`PMID ${pmid} のデータを見つけました（新構造）`);
+                        
+                        // データ構造詳細をログ出力
+                        console.log(`PMID ${pmid} データ構造:`, JSON.stringify({
+                            hasTitle: !!article.title,
+                            hasAuthors: !!article.authors,
+                            authorsType: article.authors ? typeof article.authors : 'undefined',
+                            authorsIsArray: article.authors ? Array.isArray(article.authors) : false,
+                            authorsSample: article.authors && Array.isArray(article.authors) && article.authors.length > 0 ? 
+                                JSON.stringify(article.authors[0]) : 'なし',
+                            hasPubdate: !!article.pubdate,
+                            hasSource: !!article.source,
+                            hasFullJournalName: !!article.fulljournalname
+                        }, null, 2));
                         
                         // 論文の詳細情報を抽出（著者、年、ジャーナル等）
                         const details = await extractArticleDetails(article, pmid);
@@ -672,6 +718,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     else if (summaryData.result && summaryData.result[pmid]) {
                         const article = summaryData.result[pmid];
                         console.log(`PMID ${pmid} のデータを見つけました（従来構造）`);
+                        
+                        // データ構造詳細をログ出力
+                        console.log(`PMID ${pmid} 従来構造:`, JSON.stringify({
+                            hasTitle: !!article.title,
+                            hasAuthors: !!article.authors,
+                            authorsType: article.authors ? typeof article.authors : 'undefined',
+                            hasPubdate: !!article.pubdate,
+                            hasSource: !!article.source
+                        }, null, 2));
                         
                         // 論文の詳細情報を抽出
                         const details = await extractArticleDetails(article, pmid);
@@ -817,10 +872,27 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
             
-            const articles = await Promise.all(articlesPromises);
+            let articles = [];
+            try {
+                articles = await Promise.all(articlesPromises);
+            } catch (allError) {
+                console.error('一部の論文情報取得に失敗しました:', allError);
+                // Promise.allがエラーでも処理を継続
+            }
             
-            // nullを除外
-            return articles.filter(article => article !== null);
+            // nullを除外し、基本情報を確保
+            return articles
+                .filter(article => article !== null)
+                .map(article => ({
+                    pmid: article.pmid,
+                    pubmedUrl: article.pubmedUrl || `https://pubmed.ncbi.nlm.nih.gov/${article.pmid}/`,
+                    title: article.title || `PMID: ${article.pmid}`,
+                    authors: article.authors || '',
+                    year: article.year || '',
+                    journal: article.journal || '',
+                    abstract: article.abstract || '',
+                    abstractSummary: article.abstractSummary || 'データなし'
+                }));
         } catch (error) {
             console.error('検索結果取得中にエラーが発生しました:', error);
             throw new Error('検索結果の取得に失敗しました: ' + error.message);

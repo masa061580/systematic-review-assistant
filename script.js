@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', function() {
         : 'http://localhost:3000';
     
     console.log('API Base URL:', API_BASE_URL); // デバッグ用
+    console.log('環境:', isProduction ? '本番環境' : '開発環境');
     
     // フォームと結果セクションの要素
     var searchForm = document.getElementById('searchForm');
@@ -122,6 +123,8 @@ document.addEventListener('DOMContentLoaded', function() {
         searchForm.onsubmit = async function(e) {
             e.preventDefault();
             
+            console.log('検索フォーム送信');
+            
             // 検索クエリを取得
             var searchQuery = document.getElementById('searchQuery').value.trim();
             if (!searchQuery) {
@@ -139,6 +142,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 conditions: selectedConditions
             };
             
+            console.log('検索クエリ:', currentQuery);
+            
             // ローディング表示
             showSection(loadingSection);
             
@@ -147,8 +152,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 var searchExpression = await generateSearchExpression(currentQuery);
                 currentSearchExpression = searchExpression;
                 
+                console.log('生成された検索式:', searchExpression);
+                
                 // バックエンドAPIでPubMedの検索結果数を取得
                 var count = await getArticleCount(searchExpression);
+                
+                console.log('検索結果数:', count);
                 
                 // 結果の表示
                 searchExpressionElement.textContent = searchExpression;
@@ -270,6 +279,48 @@ document.addEventListener('DOMContentLoaded', function() {
         };
     }
     
+    // APIリクエストをラップした関数（エラーハンドリング強化）
+    async function fetchWithRetry(url, options, retries = 2) {
+        try {
+            console.log(`APIリクエスト: ${options.method || 'GET'} ${url}`);
+            
+            // CORS関連のオプションを追加
+            const fetchOptions = {
+                ...options,
+                mode: 'cors',      // CORSモードを明示
+                credentials: 'omit' // クレデンシャルは送信しない
+            };
+            
+            const response = await fetch(url, fetchOptions);
+            
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                console.error('APIエラーレスポンス:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    data: errorData
+                });
+                
+                throw new Error(`APIエラー: ${response.status} ${response.statusText}`);
+            }
+            
+            return response.json();
+        } catch (error) {
+            // ネットワークエラーまたはJSONパースエラー
+            console.error('Fetchエラー:', error);
+            
+            if (retries > 0) {
+                console.log(`リトライ残り${retries}回...`);
+                // 少し待ってからリトライ（500ms）
+                await new Promise(resolve => setTimeout(resolve, 500));
+                return fetchWithRetry(url, options, retries - 1);
+            }
+            
+            // リトライも失敗した場合
+            throw new Error(`APIリクエスト失敗: ${error.message}`);
+        }
+    }
+    
     // バックエンドAPIを使用して検索式を生成する関数
     async function generateSearchExpression(query, alternative = false) {
         try {
@@ -314,10 +365,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 promptText += "\n- 過去5年間に出版された論文のみに限定するフィルターを含めてください";
             }
             
-            console.log('Sending request to:', `${API_BASE_URL}/api/openai`);
+            console.log('OpenAI APIリクエスト送信準備...');
             
             // バックエンドAPIにリクエスト
-            const response = await fetch(`${API_BASE_URL}/api/openai`, {
+            const data = await fetchWithRetry(`${API_BASE_URL}/api/openai`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -338,13 +389,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 })
             });
             
-            if (!response.ok) {
-                const errorData = await response.json();
-                console.error('API エラー詳細:', errorData);
-                throw new Error(`API エラー: ${response.status}`);
-            }
-            
-            const data = await response.json();
+            console.log('OpenAI APIレスポンス成功');
             const searchExpression = data.choices[0].message.content.trim();
             
             return searchExpression;
@@ -360,18 +405,21 @@ document.addEventListener('DOMContentLoaded', function() {
             // 検索式をエンコード
             const encodedSearchTerm = encodeURIComponent(searchExpression);
             
+            console.log('PubMed検索結果数取得リクエスト送信...');
+            
             // バックエンドAPIから検索結果数を取得
-            const response = await fetch(`${API_BASE_URL}/api/pubmed/search?term=${encodedSearchTerm}&retmax=0`);
+            const data = await fetchWithRetry(`${API_BASE_URL}/api/pubmed/search?term=${encodedSearchTerm}&retmax=0`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
             
-            if (!response.ok) {
-                throw new Error(`API エラー: ${response.status}`);
-            }
-            
-            const data = await response.json();
+            console.log('PubMed検索結果数取得成功:', data.esearchresult.count);
             return data.esearchresult.count;
         } catch (error) {
             console.error('検索結果数取得中にエラーが発生しました:', error);
-            throw new Error('検索結果数の取得に失敗しました');
+            throw new Error('検索結果数の取得に失敗しました: ' + error.message);
         }
     }
     
@@ -381,28 +429,34 @@ document.addEventListener('DOMContentLoaded', function() {
             // 検索式をエンコード
             const encodedSearchTerm = encodeURIComponent(searchExpression);
             
+            console.log('PubMed検索リクエスト送信...');
+            
             // 最初のステップ: 検索クエリに一致するPubMed IDのリストを取得
-            const searchResponse = await fetch(`${API_BASE_URL}/api/pubmed/search?term=${encodedSearchTerm}&retmax=30`);
+            const searchData = await fetchWithRetry(`${API_BASE_URL}/api/pubmed/search?term=${encodedSearchTerm}&retmax=30`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
             
-            if (!searchResponse.ok) {
-                throw new Error(`API エラー: ${searchResponse.status}`);
-            }
-            
-            const searchData = await searchResponse.json();
             const pmids = searchData.esearchresult.idlist;
+            console.log('PubMed検索結果取得成功:', { count: pmids.length });
             
             if (pmids.length === 0) {
                 return [];
             }
             
+            console.log('PubMed論文詳細リクエスト送信...');
+            
             // 第二ステップ: PubMed IDを使用して論文の詳細情報を取得
-            const summaryResponse = await fetch(`${API_BASE_URL}/api/pubmed/summary?id=${pmids.join(',')}`);
+            const summaryData = await fetchWithRetry(`${API_BASE_URL}/api/pubmed/summary?id=${pmids.join(',')}`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
             
-            if (!summaryResponse.ok) {
-                throw new Error(`API エラー: ${summaryResponse.status}`);
-            }
-            
-            const summaryData = await summaryResponse.json();
+            console.log('PubMed論文詳細取得成功');
             
             // 論文データを整形
             const articlesPromises = pmids.map(async (pmid) => {
@@ -448,14 +502,16 @@ document.addEventListener('DOMContentLoaded', function() {
             return articles.filter(article => article !== null);
         } catch (error) {
             console.error('検索結果取得中にエラーが発生しました:', error);
-            throw new Error('検索結果の取得に失敗しました');
+            throw new Error('検索結果の取得に失敗しました: ' + error.message);
         }
     }
     
     // バックエンドAPIを使用して抄録を要約する関数
     async function generateAbstractSummary(abstract) {
         try {
-            const response = await fetch(`${API_BASE_URL}/api/openai`, {
+            console.log('抄録要約リクエスト送信...');
+            
+            const data = await fetchWithRetry(`${API_BASE_URL}/api/openai`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -476,11 +532,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 })
             });
             
-            if (!response.ok) {
-                throw new Error(`API エラー: ${response.status}`);
-            }
-            
-            const data = await response.json();
+            console.log('抄録要約成功');
             return data.choices[0].message.content.trim();
         } catch (error) {
             console.error('抄録要約中にエラーが発生しました:', error);

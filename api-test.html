@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API接続テスト</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f7fa;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1, h2 {
+            color: #2c3e50;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .success {
+            color: green;
+            font-weight: bold;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 15px;
+            border: 1px solid #eee;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>システマティックレビュー検索アシスタント - API接続テスト</h1>
+        
+        <div class="test-section">
+            <h2>1. サーバー接続テスト</h2>
+            <button id="testServerBtn">サーバー状態を確認</button>
+            <div id="serverResult"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>2. OpenAI API リクエストテスト</h2>
+            <button id="testOpenAIBtn">OpenAI APIをテスト</button>
+            <div id="openaiResult"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>3. PubMed 検索テスト</h2>
+            <button id="testPubMedBtn">PubMed検索をテスト</button>
+            <div id="pubmedResult"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>ブラウザ情報</h2>
+            <pre id="browserInfo"></pre>
+        </div>
+    </div>
+
+    <script>
+        // ブラウザ情報を表示
+        document.getElementById('browserInfo').textContent = `
+User Agent: ${navigator.userAgent}
+Protocol: ${window.location.protocol}
+Host: ${window.location.host}
+        `;
+        
+        // APIベースURL
+        const API_BASE_URL = 'https://systematic-review-api.onrender.com';
+        
+        // 1. サーバー接続テスト
+        document.getElementById('testServerBtn').addEventListener('click', async function() {
+            const resultDiv = document.getElementById('serverResult');
+            resultDiv.innerHTML = '<p>接続中...</p>';
+            
+            try {
+                // まずシンプルな接続テスト
+                const response = await fetch(`${API_BASE_URL}/api/status`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    // クレデンシャルを含めない
+                    credentials: 'omit',
+                    // CORSモードを明示
+                    mode: 'cors'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    resultDiv.innerHTML = `
+                        <p class="success">サーバー接続成功!</p>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <p class="error">サーバー接続エラー: ${response.status} ${response.statusText}</p>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <p class="error">サーバー接続エラー: ${error.message}</p>
+                    <p>詳細: APIサーバーが稼働していないか、CORSの問題が発生しています。</p>
+                `;
+                console.error('Server test error:', error);
+            }
+        });
+        
+        // 2. OpenAI API テスト
+        document.getElementById('testOpenAIBtn').addEventListener('click', async function() {
+            const resultDiv = document.getElementById('openaiResult');
+            resultDiv.innerHTML = '<p>OpenAI APIテスト中...</p>';
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/openai`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'omit',
+                    mode: 'cors',
+                    body: JSON.stringify({
+                        model: "gpt-4o",
+                        messages: [
+                            {
+                                role: "system",
+                                content: "簡潔に応答してください。"
+                            },
+                            {
+                                role: "user",
+                                content: "こんにちは、テストメッセージです。"
+                            }
+                        ],
+                        temperature: 0.7
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    resultDiv.innerHTML = `
+                        <p class="success">OpenAI API リクエスト成功!</p>
+                        <p><strong>応答:</strong> ${data.choices[0].message.content}</p>
+                    `;
+                } else {
+                    const errorData = await response.json();
+                    resultDiv.innerHTML = `
+                        <p class="error">OpenAI API リクエストエラー: ${response.status} ${response.statusText}</p>
+                        <pre>${JSON.stringify(errorData, null, 2)}</pre>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <p class="error">OpenAI API リクエストエラー: ${error.message}</p>
+                    <p>詳細: APIキーが設定されていないか、サーバーとの通信に問題がある可能性があります。</p>
+                `;
+                console.error('OpenAI test error:', error);
+            }
+        });
+        
+        // 3. PubMed 検索テスト
+        document.getElementById('testPubMedBtn').addEventListener('click', async function() {
+            const resultDiv = document.getElementById('pubmedResult');
+            resultDiv.innerHTML = '<p>PubMed検索テスト中...</p>';
+            
+            try {
+                // 簡単な検索クエリでテスト
+                const searchTerm = 'hypertension';
+                const response = await fetch(`${API_BASE_URL}/api/pubmed/search?term=${encodeURIComponent(searchTerm)}&retmax=3`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'omit',
+                    mode: 'cors'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    resultDiv.innerHTML = `
+                        <p class="success">PubMed検索成功!</p>
+                        <p>検索結果: ${data.esearchresult.count} 件見つかりました</p>
+                        <pre>${JSON.stringify(data.esearchresult.idlist, null, 2)}</pre>
+                    `;
+                } else {
+                    const errorData = await response.json();
+                    resultDiv.innerHTML = `
+                        <p class="error">PubMed検索エラー: ${response.status} ${response.statusText}</p>
+                        <pre>${JSON.stringify(errorData, null, 2)}</pre>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <p class="error">PubMed検索エラー: ${error.message}</p>
+                    <p>詳細: サーバーとの通信に問題があるか、PubMed APIの呼び出しに失敗しました。</p>
+                `;
+                console.error('PubMed test error:', error);
+            }
+        });
+    </script>
+</body>
+</html>

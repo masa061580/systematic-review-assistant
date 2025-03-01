@@ -702,7 +702,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // PubMedから抄録を取得する関数
+    // PubMedから抄録を取得する関数の改善版
     async function fetchAbstract(pmid) {
         try {
             console.log(`PMID ${pmid} の抄録を取得中...`);
@@ -716,9 +716,12 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // レスポンスから抄録テキストを抽出
             if (response && response.abstract) {
-                return response.abstract;
+                const abstractText = response.abstract;
+                console.log(`PMID ${pmid} の抄録取得成功 (長さ: ${abstractText.length}文字)`);
+                return abstractText;
             }
             
+            console.log(`PMID ${pmid} の抄録は利用できません`);
             return "Abstract not available";
         } catch (error) {
             console.error(`PMID ${pmid} の抄録取得中にエラーが発生しました:`, error);
@@ -726,7 +729,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // 研究デザインを判定する関数
+    // 研究デザインを判定する関数の改善版
     async function determineStudyDesign(abstract) {
         try {
             console.log('研究デザイン判定リクエスト送信...');
@@ -741,25 +744,27 @@ document.addEventListener('DOMContentLoaded', function() {
                     messages: [
                         {
                             role: "system",
-                            content: "あなたは医学研究のエキスパートです。与えられた論文の抄録から研究デザインを判定してください。"
+                            content: "あなたは医学研究のエキスパートです。与えられた論文の抄録から研究デザインを判定してください。抄録に明示的な記述がなくても、研究方法や結果の記述から研究デザインを推測できます。"
                         },
                         {
                             role: "user",
                             content: `以下の医学論文の抄録から研究デザインを判定してください。
-以下のいずれかの研究デザインでラベル付けし、その理由も簡潔に説明してください。
-- RCT（ランダム化比較試験）
-- Meta-analysis（メタ分析）
-- Systematic review（システマティックレビュー）
-- Cohort study（コホート研究）
-- Case-control study（ケースコントロール研究）
-- Cross-sectional study（横断研究）
-- Case report/series（症例報告/症例集積）
-- Qualitative study（質的研究）
-- Animal/Basic study（動物/基礎研究）
-- Other（その他）
+    抄録の内容を分析して、最も適切な研究デザインを以下のいずれかでラベル付けしてください。
+    抄録の記述から明確に判断できない場合は、最も可能性の高いデザインを選択してください。
 
-抄録:
-${abstract}`
+    - RCT（ランダム化比較試験）
+    - Meta-analysis（メタ分析）
+    - Systematic review（システマティックレビュー）
+    - Cohort study（コホート研究）
+    - Case-control study（ケースコントロール研究）
+    - Cross-sectional study（横断研究）
+    - Case report/series（症例報告/症例集積）
+    - Qualitative study（質的研究）
+    - Animal/Basic study（動物/基礎研究）
+    - Other（その他）
+
+    抄録:
+    ${abstract}`
                         }
                     ],
                     temperature: 0.3
@@ -768,12 +773,11 @@ ${abstract}`
             
             console.log('研究デザイン判定成功');
             
-            // 応答から研究デザインを抽出 (最初の行を取得)
+            // 応答から研究デザインを抽出
             const fullResponse = data.choices[0].message.content.trim();
             const firstLine = fullResponse.split('\n')[0];
             
-            // 研究デザイン名だけを抽出 (例: "RCT（ランダム化比較試験）" → "RCT")
-            let designMatch;
+            // 研究デザイン名の抽出
             if (firstLine.includes("RCT")) return "RCT";
             if (firstLine.includes("Meta-analysis")) return "Meta-analysis";
             if (firstLine.includes("Systematic review")) return "Systematic review";
@@ -791,8 +795,10 @@ ${abstract}`
             return "Unknown";
         }
     }
+
     
     // 結果を要約する関数
+    // 結果を要約する関数の改善版
     async function summarizeResults(abstract) {
         try {
             console.log('結果要約リクエスト送信...');
@@ -807,14 +813,15 @@ ${abstract}`
                     messages: [
                         {
                             role: "system",
-                            content: "あなたは医学論文の抄録から結果を抽出し、要約する専門家です。日本語で簡潔に1文で要約してください。"
+                            content: "あなたは医学論文の抄録から研究結果を抽出し、要約する専門家です。抄録が構造化されていない場合でも、テキスト全体から主要な研究結果を特定できます。"
                         },
                         {
                             role: "user",
-                            content: `以下の医学論文の抄録から「結果（Results）」セクションの内容を日本語で1文に要約してください。結果セクションが明確でない場合は、論文の主な結果や知見について要約してください。
+                            content: `以下の医学論文の抄録から主要な「結果（Results）」に関する情報を日本語で1文に要約してください。
+    抄録が明示的に「Results」セクションに分かれていない場合は、研究で得られた主な知見や測定結果について要約してください。
 
-抄録:
-${abstract}`
+    抄録:
+    ${abstract}`
                         }
                     ],
                     temperature: 0.3
@@ -828,8 +835,8 @@ ${abstract}`
             return "結果の要約を取得できませんでした";
         }
     }
-    
-    // 結論を要約する関数
+
+    // 結論を要約する関数の改善版
     async function summarizeConclusion(abstract) {
         try {
             console.log('結論要約リクエスト送信...');
@@ -844,14 +851,15 @@ ${abstract}`
                     messages: [
                         {
                             role: "system",
-                            content: "あなたは医学論文の抄録から結論を抽出し、要約する専門家です。日本語で簡潔に1文で要約してください。"
+                            content: "あなたは医学論文の抄録から結論を抽出し、要約する専門家です。抄録が構造化されていない場合でも、テキスト全体から結論や臨床的意義を特定できます。"
                         },
                         {
                             role: "user",
-                            content: `以下の医学論文の抄録から「結論（Conclusion）」セクションの内容を日本語で1文に要約してください。結論セクションが明確でない場合は、論文の主要な結論や著者の主張について要約してください。
+                            content: `以下の医学論文の抄録から「結論（Conclusion）」に関する情報を日本語で1文に要約してください。
+    抄録が明示的に「Conclusion」セクションに分かれていない場合は、著者が示唆する主要な結論、臨床的意義、または今後の展望について要約してください。
 
-抄録:
-${abstract}`
+    抄録:
+    ${abstract}`
                         }
                     ],
                     temperature: 0.3

@@ -57,6 +57,7 @@
                 <div class="action-buttons">
                     <button id="regenerateButton">検索式を再生成</button>
                     <button id="getResultsButton">検索結果を取得</button>
+                    <button id="getEnhancedResultsButton" class="primary-button">詳細情報付き検索結果を取得</button>
                     <button id="backToStart">最初からやり直す</button>
                 </div>
             </section>
@@ -66,9 +67,26 @@
                 <div id="resultsInfo"></div>
                 <div class="results-actions">
                     <button id="downloadCSV">結果をCSVでダウンロード</button>
+                    <button id="downloadDetailedCSV" class="primary-button">詳細情報付きCSVでダウンロード</button>
                     <button id="backToSearch">検索式に戻る</button>
                 </div>
                 <div id="articleResults"></div>
+            </section>
+            
+            <section id="enhancedResultsSection">
+                <h2>詳細分析結果</h2>
+                <div id="enhancedResultsInfo">
+                    <p>詳細な論文情報を取得しています...</p>
+                    <div class="progress-container">
+                        <div id="progressBar" class="progress-bar"></div>
+                    </div>
+                    <p id="progressStatus">0 / 0 論文を処理中...</p>
+                </div>
+                <div class="results-actions">
+                    <button id="downloadEnhancedCSV" class="primary-button">詳細分析結果をCSVでダウンロード</button>
+                    <button id="backToResults">検索結果に戻る</button>
+                </div>
+                <div id="enhancedResults"></div>
             </section>
         </main>
         
@@ -86,7 +104,8 @@
                 <ul>
                     <li>日本語での入力から英語の検索式を自動生成</li>
                     <li>検索結果数の即時確認</li>
-                    <li>検索結果のCSVダウンロード（PubMedのID、URL、タイトル、著者、抄録の要約）</li>
+                    <li>検索結果のCSVダウンロード（PubMedのID、URL、タイトル、著者など）</li>
+                    <li>抄録からの研究デザイン自動判定と結果・結論の要約</li>
                     <li>システマティックレビューに適した検索条件の設定</li>
                 </ul>
                 <button id="closeModalButton">閉じる</button>
@@ -103,7 +122,8 @@
             
             // PubMed API エンドポイント
             pubmedSearch: 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi',
-            pubmedSummary: 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi'
+            pubmedSummary: 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi',
+            pubmedFetch: 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi'
         };
 
         // APIキーはバックエンドに保存

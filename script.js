@@ -17,20 +17,29 @@ document.addEventListener('DOMContentLoaded', function() {
     var loadingSection = document.getElementById('loadingSection');
     var resultSection = document.getElementById('resultSection');
     var articleResultsSection = document.getElementById('articleResultsSection');
+    var enhancedResultsSection = document.getElementById('enhancedResultsSection');
     
     // 検索式と結果の表示関連要素
     var searchExpressionElement = document.getElementById('searchExpression');
     var articleCountElement = document.getElementById('articleCount');
     var articleResultsElement = document.getElementById('articleResults');
     var resultsInfoElement = document.getElementById('resultsInfo');
+    var enhancedResultsElement = document.getElementById('enhancedResults');
+    var enhancedResultsInfoElement = document.getElementById('enhancedResultsInfo');
+    var progressBarElement = document.getElementById('progressBar');
+    var progressStatusElement = document.getElementById('progressStatus');
     
     // ボタン要素
     var copySearchExpressionBtn = document.getElementById('copySearchExpression');
     var regenerateButton = document.getElementById('regenerateButton');
     var getResultsButton = document.getElementById('getResultsButton');
+    var getEnhancedResultsButton = document.getElementById('getEnhancedResultsButton');
     var backToStartButton = document.getElementById('backToStart');
     var downloadCSVButton = document.getElementById('downloadCSV');
+    var downloadDetailedCSVButton = document.getElementById('downloadDetailedCSV');
+    var downloadEnhancedCSVButton = document.getElementById('downloadEnhancedCSV');
     var backToSearchButton = document.getElementById('backToSearch');
+    var backToResultsButton = document.getElementById('backToResults');
     
     // モーダル関連要素
     var showAboutLink = document.getElementById('showAbout');
@@ -59,6 +68,7 @@ document.addEventListener('DOMContentLoaded', function() {
         loadingSection.style.display = "none";
         resultSection.style.display = "none";
         articleResultsSection.style.display = "none";
+        enhancedResultsSection.style.display = "none";
         
         // 指定されたセクションのみ表示
         section.style.display = "block";
@@ -69,12 +79,14 @@ document.addEventListener('DOMContentLoaded', function() {
     loadingSection.style.display = "none";
     resultSection.style.display = "none";
     articleResultsSection.style.display = "none";
+    enhancedResultsSection.style.display = "none";
     aboutModal.style.display = "none";
     
     // 検索クエリとPubMed検索式を保存する変数
     var currentQuery = '';
     var currentSearchExpression = '';
     var searchResults = [];
+    var enhancedResults = [];
     
     // -------- モーダル関連機能 -------- //
     
@@ -244,10 +256,43 @@ document.addEventListener('DOMContentLoaded', function() {
         };
     }
     
+    // 詳細情報付き検索結果を取得ボタン
+    if (getEnhancedResultsButton) {
+        getEnhancedResultsButton.onclick = async function() {
+            showSection(loadingSection);
+            
+            try {
+                // 通常の検索結果を先に取得
+                var results = await getSearchResults(currentSearchExpression);
+                searchResults = results;
+                
+                // 検索結果セクションを表示
+                showSection(enhancedResultsSection);
+                
+                // 詳細情報を順次取得して表示
+                enhancedResults = await getEnhancedResults(results);
+                
+                // 詳細情報付き結果を表示
+                displayEnhancedResults(enhancedResults);
+            } catch (error) {
+                console.error('Error:', error);
+                alert('エラーが発生しました: ' + error.message);
+                showSection(resultSection);
+            }
+        };
+    }
+    
     // 検索式画面に戻るボタン
     if (backToSearchButton) {
         backToSearchButton.onclick = function() {
             showSection(resultSection);
+        };
+    }
+    
+    // 検索結果画面に戻るボタン
+    if (backToResultsButton) {
+        backToResultsButton.onclick = function() {
+            showSection(articleResultsSection);
         };
     }
     
@@ -261,6 +306,7 @@ document.addEventListener('DOMContentLoaded', function() {
             currentQuery = '';
             currentSearchExpression = '';
             searchResults = [];
+            enhancedResults = [];
             
             // 初期フォームを表示
             showSection(initialForm);
@@ -276,6 +322,52 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             exportToCSV(searchResults);
+        };
+    }
+    
+    // 詳細情報付きCSVダウンロードボタン
+    if (downloadDetailedCSVButton) {
+        downloadDetailedCSVButton.onclick = async function() {
+            if (searchResults.length === 0) {
+                alert('ダウンロードする検索結果がありません');
+                return;
+            }
+            
+            try {
+                // ローディングメッセージを表示
+                const originalText = downloadDetailedCSVButton.textContent;
+                downloadDetailedCSVButton.textContent = '詳細情報を取得中...';
+                downloadDetailedCSVButton.disabled = true;
+                
+                // 詳細情報を取得
+                if (enhancedResults.length === 0) {
+                    enhancedResults = await getEnhancedResults(searchResults);
+                }
+                
+                // CSVとしてエクスポート
+                exportEnhancedToCSV(enhancedResults);
+                
+                // ボタンを元に戻す
+                downloadDetailedCSVButton.textContent = originalText;
+                downloadDetailedCSVButton.disabled = false;
+            } catch (error) {
+                console.error('詳細情報の取得中にエラーが発生しました:', error);
+                alert('詳細情報の取得に失敗しました: ' + error.message);
+                downloadDetailedCSVButton.textContent = originalText;
+                downloadDetailedCSVButton.disabled = false;
+            }
+        };
+    }
+    
+    // 詳細分析結果CSVダウンロードボタン
+    if (downloadEnhancedCSVButton) {
+        downloadEnhancedCSVButton.onclick = function() {
+            if (enhancedResults.length === 0) {
+                alert('ダウンロードする詳細分析結果がありません');
+                return;
+            }
+            
+            exportEnhancedToCSV(enhancedResults);
         };
     }
     
@@ -477,6 +569,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 // タイトルを取得
                 const title = article.title || 'タイトルなし';
                 
+                // 出版年を取得
+                const pubDate = article.pubdate || '';
+                const year = pubDate.split(' ')[0] || '';
+                
+                // ジャーナル名を取得
+                const journal = article.fulljournalname || article.source || '';
+                
                 // 抄録の要約
                 let abstractSummary = 'Abstract not available';
                 if (article.abstract) {
@@ -492,6 +591,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     pubmedUrl,
                     title,
                     authors,
+                    year,
+                    journal,
+                    abstract: article.abstract || '',
                     abstractSummary
                 };
             });
@@ -503,6 +605,238 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (error) {
             console.error('検索結果取得中にエラーが発生しました:', error);
             throw new Error('検索結果の取得に失敗しました: ' + error.message);
+        }
+    }
+    
+    // 詳細情報付き検索結果を取得する関数
+    async function getEnhancedResults(basicResults) {
+        try {
+            // プログレスバーの初期化
+            progressBarElement.style.width = '0%';
+            progressStatusElement.textContent = `0 / ${basicResults.length} 論文を処理中...`;
+            
+            const enhancedArticles = [];
+            
+            // 各論文の詳細情報を取得
+            for (let i = 0; i < basicResults.length; i++) {
+                const article = basicResults[i];
+                
+                // プログレス表示の更新
+                const progress = Math.round((i / basicResults.length) * 100);
+                progressBarElement.style.width = `${progress}%`;
+                progressStatusElement.textContent = `${i} / ${basicResults.length} 論文を処理中...`;
+                
+                try {
+                    // 抄録がない場合はPubMedから直接取得を試みる
+                    let abstract = article.abstract;
+                    if (!abstract || abstract.trim() === '') {
+                        abstract = await fetchAbstract(article.pmid);
+                    }
+                    
+                    // 研究デザインの判定
+                    const studyDesign = await determineStudyDesign(abstract);
+                    
+                    // 結果と結論の要約
+                    const resultsSummary = await summarizeResults(abstract);
+                    const conclusionSummary = await summarizeConclusion(abstract);
+                    
+                    // 拡張情報を追加
+                    enhancedArticles.push({
+                        ...article,
+                        abstract: abstract,
+                        studyDesign: studyDesign,
+                        resultsSummary: resultsSummary,
+                        conclusionSummary: conclusionSummary
+                    });
+                    
+                    // 一部処理済みの結果を表示
+                    if (i % 5 === 0 || i === basicResults.length - 1) {
+                        displayEnhancedResults(enhancedArticles);
+                    }
+                } catch (error) {
+                    console.error(`論文ID ${article.pmid} の処理中にエラーが発生しました:`, error);
+                    // エラーが発生しても処理を継続
+                    enhancedArticles.push({
+                        ...article,
+                        studyDesign: 'unknown',
+                        resultsSummary: 'エラーのため要約を取得できませんでした',
+                        conclusionSummary: 'エラーのため要約を取得できませんでした'
+                    });
+                }
+            }
+            
+            // 完了表示
+            progressBarElement.style.width = '100%';
+            progressStatusElement.textContent = `${basicResults.length} / ${basicResults.length} 論文の処理が完了しました`;
+            
+            return enhancedArticles;
+        } catch (error) {
+            console.error('詳細情報取得中にエラーが発生しました:', error);
+            throw new Error('詳細情報の取得に失敗しました: ' + error.message);
+        }
+    }
+    
+    // PubMedから抄録を取得する関数
+    async function fetchAbstract(pmid) {
+        try {
+            console.log(`PMID ${pmid} の抄録を取得中...`);
+            
+            const response = await fetchWithRetry(`${API_BASE_URL}/api/pubmed/fetch?id=${pmid}&rettype=abstract`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            // レスポンスから抄録テキストを抽出
+            if (response && response.abstract) {
+                return response.abstract;
+            }
+            
+            return "Abstract not available";
+        } catch (error) {
+            console.error(`PMID ${pmid} の抄録取得中にエラーが発生しました:`, error);
+            return "Abstract could not be retrieved";
+        }
+    }
+    
+    // 研究デザインを判定する関数
+    async function determineStudyDesign(abstract) {
+        try {
+            console.log('研究デザイン判定リクエスト送信...');
+            
+            const data = await fetchWithRetry(`${API_BASE_URL}/api/openai`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: "gpt-4o",
+                    messages: [
+                        {
+                            role: "system",
+                            content: "あなたは医学研究のエキスパートです。与えられた論文の抄録から研究デザインを判定してください。"
+                        },
+                        {
+                            role: "user",
+                            content: `以下の医学論文の抄録から研究デザインを判定してください。
+以下のいずれかの研究デザインでラベル付けし、その理由も簡潔に説明してください。
+- RCT（ランダム化比較試験）
+- Meta-analysis（メタ分析）
+- Systematic review（システマティックレビュー）
+- Cohort study（コホート研究）
+- Case-control study（ケースコントロール研究）
+- Cross-sectional study（横断研究）
+- Case report/series（症例報告/症例集積）
+- Qualitative study（質的研究）
+- Animal/Basic study（動物/基礎研究）
+- Other（その他）
+
+抄録:
+${abstract}`
+                        }
+                    ],
+                    temperature: 0.3
+                })
+            });
+            
+            console.log('研究デザイン判定成功');
+            
+            // 応答から研究デザインを抽出 (最初の行を取得)
+            const fullResponse = data.choices[0].message.content.trim();
+            const firstLine = fullResponse.split('\n')[0];
+            
+            // 研究デザイン名だけを抽出 (例: "RCT（ランダム化比較試験）" → "RCT")
+            let designMatch;
+            if (firstLine.includes("RCT")) return "RCT";
+            if (firstLine.includes("Meta-analysis")) return "Meta-analysis";
+            if (firstLine.includes("Systematic review")) return "Systematic review";
+            if (firstLine.includes("Cohort")) return "Cohort study";
+            if (firstLine.includes("Case-control")) return "Case-control study";
+            if (firstLine.includes("Cross-sectional")) return "Cross-sectional study";
+            if (firstLine.includes("Case report")) return "Case report";
+            if (firstLine.includes("Qualitative")) return "Qualitative study";
+            if (firstLine.includes("Animal")) return "Animal/Basic study";
+            
+            // それ以外はOtherとする
+            return "Other";
+        } catch (error) {
+            console.error('研究デザイン判定中にエラーが発生しました:', error);
+            return "Unknown";
+        }
+    }
+    
+    // 結果を要約する関数
+    async function summarizeResults(abstract) {
+        try {
+            console.log('結果要約リクエスト送信...');
+            
+            const data = await fetchWithRetry(`${API_BASE_URL}/api/openai`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: "gpt-4o",
+                    messages: [
+                        {
+                            role: "system",
+                            content: "あなたは医学論文の抄録から結果を抽出し、要約する専門家です。日本語で簡潔に1文で要約してください。"
+                        },
+                        {
+                            role: "user",
+                            content: `以下の医学論文の抄録から「結果（Results）」セクションの内容を日本語で1文に要約してください。結果セクションが明確でない場合は、論文の主な結果や知見について要約してください。
+
+抄録:
+${abstract}`
+                        }
+                    ],
+                    temperature: 0.3
+                })
+            });
+            
+            console.log('結果要約成功');
+            return data.choices[0].message.content.trim();
+        } catch (error) {
+            console.error('結果要約中にエラーが発生しました:', error);
+            return "結果の要約を取得できませんでした";
+        }
+    }
+    
+    // 結論を要約する関数
+    async function summarizeConclusion(abstract) {
+        try {
+            console.log('結論要約リクエスト送信...');
+            
+            const data = await fetchWithRetry(`${API_BASE_URL}/api/openai`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: "gpt-4o",
+                    messages: [
+                        {
+                            role: "system",
+                            content: "あなたは医学論文の抄録から結論を抽出し、要約する専門家です。日本語で簡潔に1文で要約してください。"
+                        },
+                        {
+                            role: "user",
+                            content: `以下の医学論文の抄録から「結論（Conclusion）」セクションの内容を日本語で1文に要約してください。結論セクションが明確でない場合は、論文の主要な結論や著者の主張について要約してください。
+
+抄録:
+${abstract}`
+                        }
+                    ],
+                    temperature: 0.3
+                })
+            });
+            
+            console.log('結論要約成功');
+            return data.choices[0].message.content.trim();
+        } catch (error) {
+            console.error('結論要約中にエラーが発生しました:', error);
+            return "結論の要約を取得できませんでした";
         }
     }
     
@@ -558,7 +892,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     <a href="${article.pubmedUrl}" target="_blank">${article.title}</a>
                 </div>
                 <div class="article-authors">${article.authors}</div>
-                <div class="article-info">PubMed ID: ${article.pmid}</div>
+                <div class="article-info">
+                    <span>${article.journal}</span>
+                    ${article.year ? `<span> | ${article.year}</span>` : ''}
+                    <span> | PubMed ID: ${article.pmid}</span>
+                </div>
                 <div class="article-summary">
                     <strong>要約:</strong> ${article.abstractSummary}
                 </div>
@@ -568,10 +906,62 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
+    // 詳細情報付き検索結果を表示する関数
+    function displayEnhancedResults(results) {
+        enhancedResultsElement.innerHTML = '';
+        
+        if (results.length === 0) {
+            enhancedResultsElement.innerHTML = '<p>詳細分析結果がありません</p>';
+            return;
+        }
+        
+        results.forEach(function(article) {
+            const articleElement = document.createElement('div');
+            articleElement.className = 'article-card';
+            
+            // 研究デザインに応じたクラスを追加
+            let designClass = 'design-unknown';
+            if (article.studyDesign) {
+                if (article.studyDesign.includes('RCT')) {
+                    designClass = 'design-rct';
+                } else if (article.studyDesign.includes('Meta') || article.studyDesign.includes('Systematic')) {
+                    designClass = 'design-meta';
+                } else if (article.studyDesign.includes('Cohort')) {
+                    designClass = 'design-cohort';
+                } else if (article.studyDesign.includes('Case-control')) {
+                    designClass = 'design-casecontrol';
+                } else if (article.studyDesign.includes('Case report')) {
+                    designClass = 'design-casereport';
+                }
+            }
+            
+            articleElement.innerHTML = `
+                <div class="article-title">
+                    <a href="${article.pubmedUrl}" target="_blank">${article.title}</a>
+                </div>
+                <div class="article-authors">${article.authors}</div>
+                <div class="article-info">
+                    <span>${article.journal}</span>
+                    ${article.year ? `<span> | ${article.year}</span>` : ''}
+                    <span> | PubMed ID: ${article.pmid}</span>
+                    <span class="article-design ${designClass}">${article.studyDesign || 'Unknown'}</span>
+                </div>
+                <div class="article-summary">
+                    <strong>結果要約:</strong> ${article.resultsSummary || '要約なし'}
+                </div>
+                <div class="article-summary">
+                    <strong>結論要約:</strong> ${article.conclusionSummary || '要約なし'}
+                </div>
+            `;
+            
+            enhancedResultsElement.appendChild(articleElement);
+        });
+    }
+    
     // 検索結果をCSVとしてエクスポートする関数
     function exportToCSV(results) {
         // CSVヘッダー
-        const csvHeader = ['PubMed ID', 'PubMed URL', 'タイトル', '著者', '要約'];
+        const csvHeader = ['PubMed ID', 'PubMed URL', 'タイトル', '著者', '出版年', 'ジャーナル', '要約'];
         
         // 各行のデータを作成
         const csvRows = results.map(function(article) {
@@ -580,6 +970,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 article.pubmedUrl,
                 article.title,
                 article.authors,
+                article.year || '',
+                article.journal || '',
                 article.abstractSummary
             ];
         });
@@ -596,11 +988,61 @@ document.addEventListener('DOMContentLoaded', function() {
         }).join('\n');
         
         // CSVファイルのダウンロード
+        downloadCSVFile(csvContent, 'pubmed_search_results.csv');
+    }
+    
+    // 詳細情報付き検索結果をCSVとしてエクスポートする関数
+    function exportEnhancedToCSV(results) {
+        // CSVヘッダー
+        const csvHeader = [
+            'PubMed ID', 
+            'PubMed URL', 
+            'タイトル', 
+            '著者', 
+            '出版年', 
+            'ジャーナル', 
+            '研究デザイン', 
+            '結果要約', 
+            '結論要約'
+        ];
+        
+        // 各行のデータを作成
+        const csvRows = results.map(function(article) {
+            return [
+                article.pmid,
+                article.pubmedUrl,
+                article.title,
+                article.authors,
+                article.year || '',
+                article.journal || '',
+                article.studyDesign || 'Unknown',
+                article.resultsSummary || '',
+                article.conclusionSummary || ''
+            ];
+        });
+        
+        // ヘッダーと行を結合
+        const csvData = [csvHeader].concat(csvRows);
+        
+        // CSVフォーマットに変換
+        const csvContent = csvData.map(function(row) {
+            return row.map(function(cell) {
+                // ダブルクォートでくくり、内部のダブルクォートはエスケープ
+                return '"' + String(cell).replace(/"/g, '""') + '"';
+            }).join(',');
+        }).join('\n');
+        
+        // CSVファイルのダウンロード
+        downloadCSVFile(csvContent, 'pubmed_detailed_results.csv');
+    }
+    
+    // CSVファイルをダウンロードする関数
+    function downloadCSVFile(csvContent, filename) {
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.setAttribute('href', url);
-        link.setAttribute('download', 'pubmed_search_results.csv');
+        link.setAttribute('download', filename);
         link.style.visibility = 'hidden';
         document.body.appendChild(link);
         link.click();

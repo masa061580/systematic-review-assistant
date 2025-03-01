@@ -1,8 +1,14 @@
 // DOM要素の参照を取得
 document.addEventListener('DOMContentLoaded', function() {
-    // バックエンドAPIのベースURL（開発環境と本番環境で切り替え）
-    // const API_BASE_URL = 'http://localhost:3000'; // 開発環境
-    const API_BASE_URL = 'https://systematic-review-api.onrender.com'; // 本番環境
+    // 環境によってバックエンドのURLを切り替え
+    const isProduction = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+    
+    // 本番環境（GitHub Pages）では、デプロイしたバックエンドURLを使用
+    const API_BASE_URL = isProduction 
+        ? 'https://systematic-review-api.onrender.com' // 必ずHTTPSのURLを使用
+        : 'http://localhost:3000';
+    
+    console.log('API Base URL:', API_BASE_URL); // デバッグ用
     
     // フォームと結果セクションの要素
     var searchForm = document.getElementById('searchForm');
@@ -31,6 +37,20 @@ document.addEventListener('DOMContentLoaded', function() {
     var closeModalButtonX = document.getElementById('closeModalBtn');
     var closeModalButton = document.getElementById('closeModalButton');
     
+    // すべての要素が存在することを確認
+    if (!searchForm) {
+        console.error('searchForm要素が見つかりません');
+    }
+    if (!initialForm) {
+        console.error('initialForm要素が見つかりません');
+    }
+    if (!loadingSection) {
+        console.error('loadingSection要素が見つかりません');
+    }
+    if (!resultSection) {
+        console.error('resultSection要素が見つかりません');
+    }
+    
     // セクションの表示/非表示を制御する関数
     function showSection(section) {
         // すべてのセクションを非表示
@@ -58,27 +78,35 @@ document.addEventListener('DOMContentLoaded', function() {
     // -------- モーダル関連機能 -------- //
     
     // モーダルを表示
-    showAboutLink.onclick = function(e) {
-        e.preventDefault();
-        aboutModal.style.display = "flex";
-    };
+    if (showAboutLink) {
+        showAboutLink.onclick = function(e) {
+            e.preventDefault();
+            aboutModal.style.display = "flex";
+        };
+    }
     
     // Xボタンでモーダルを閉じる
-    closeModalButtonX.onclick = function() {
-        aboutModal.style.display = "none";
-    };
+    if (closeModalButtonX) {
+        closeModalButtonX.onclick = function() {
+            aboutModal.style.display = "none";
+        };
+    }
     
     // 閉じるボタンでモーダルを閉じる
-    closeModalButton.onclick = function() {
-        aboutModal.style.display = "none";
-    };
+    if (closeModalButton) {
+        closeModalButton.onclick = function() {
+            aboutModal.style.display = "none";
+        };
+    }
     
     // モーダルの外側をクリックで閉じる
-    aboutModal.onclick = function(e) {
-        if (e.target === aboutModal) {
-            aboutModal.style.display = "none";
-        }
-    };
+    if (aboutModal) {
+        aboutModal.onclick = function(e) {
+            if (e.target === aboutModal) {
+                aboutModal.style.display = "none";
+            }
+        };
+    }
     
     // ESCキーでモーダルを閉じる
     document.addEventListener('keydown', function(e) {
@@ -90,143 +118,157 @@ document.addEventListener('DOMContentLoaded', function() {
     // -------- 検索関連機能 -------- //
     
     // 検索フォーム送信イベント
-    searchForm.onsubmit = async function(e) {
-        e.preventDefault();
-        
-        // 検索クエリを取得
-        var searchQuery = document.getElementById('searchQuery').value.trim();
-        if (!searchQuery) {
-            alert('検索内容を入力してください');
-            return;
-        }
-        
-        // 選択された条件を取得
-        var selectedConditions = Array.from(document.querySelectorAll('input[name="condition"]:checked'))
-            .map(function(checkbox) { return checkbox.value; });
-        
-        // 現在のクエリを保存
-        currentQuery = {
-            searchText: searchQuery,
-            conditions: selectedConditions
+    if (searchForm) {
+        searchForm.onsubmit = async function(e) {
+            e.preventDefault();
+            
+            // 検索クエリを取得
+            var searchQuery = document.getElementById('searchQuery').value.trim();
+            if (!searchQuery) {
+                alert('検索内容を入力してください');
+                return;
+            }
+            
+            // 選択された条件を取得
+            var selectedConditions = Array.from(document.querySelectorAll('input[name="condition"]:checked'))
+                .map(function(checkbox) { return checkbox.value; });
+            
+            // 現在のクエリを保存
+            currentQuery = {
+                searchText: searchQuery,
+                conditions: selectedConditions
+            };
+            
+            // ローディング表示
+            showSection(loadingSection);
+            
+            try {
+                // バックエンドAPIを使用して検索式を生成
+                var searchExpression = await generateSearchExpression(currentQuery);
+                currentSearchExpression = searchExpression;
+                
+                // バックエンドAPIでPubMedの検索結果数を取得
+                var count = await getArticleCount(searchExpression);
+                
+                // 結果の表示
+                searchExpressionElement.textContent = searchExpression;
+                articleCountElement.textContent = `検索結果: 約${count}件の論文が見つかりました`;
+                
+                // 結果セクションを表示
+                showSection(resultSection);
+            } catch (error) {
+                console.error('Error:', error);
+                alert('エラーが発生しました: ' + error.message);
+                showSection(initialForm);
+            }
         };
-        
-        // ローディング表示
-        showSection(loadingSection);
-        
-        try {
-            // バックエンドAPIを使用して検索式を生成
-            var searchExpression = await generateSearchExpression(currentQuery);
-            currentSearchExpression = searchExpression;
-            
-            // バックエンドAPIでPubMedの検索結果数を取得
-            var count = await getArticleCount(searchExpression);
-            
-            // 結果の表示
-            searchExpressionElement.textContent = searchExpression;
-            articleCountElement.textContent = `検索結果: 約${count}件の論文が見つかりました`;
-            
-            // 結果セクションを表示
-            showSection(resultSection);
-        } catch (error) {
-            console.error('Error:', error);
-            alert('エラーが発生しました: ' + error.message);
-            showSection(initialForm);
-        }
-    };
+    }
     
     // 検索式をコピーボタン
-    copySearchExpressionBtn.onclick = function() {
-        navigator.clipboard.writeText(currentSearchExpression)
-            .then(function() {
-                var originalText = copySearchExpressionBtn.textContent;
-                copySearchExpressionBtn.textContent = 'コピーしました！';
-                setTimeout(function() {
-                    copySearchExpressionBtn.textContent = originalText;
-                }, 2000);
-            })
-            .catch(function(err) {
-                console.error('コピーに失敗しました:', err);
-                alert('コピーできませんでした。');
-            });
-    };
+    if (copySearchExpressionBtn) {
+        copySearchExpressionBtn.onclick = function() {
+            navigator.clipboard.writeText(currentSearchExpression)
+                .then(function() {
+                    var originalText = copySearchExpressionBtn.textContent;
+                    copySearchExpressionBtn.textContent = 'コピーしました！';
+                    setTimeout(function() {
+                        copySearchExpressionBtn.textContent = originalText;
+                    }, 2000);
+                })
+                .catch(function(err) {
+                    console.error('コピーに失敗しました:', err);
+                    alert('コピーできませんでした。');
+                });
+        };
+    }
     
     // 検索式を再生成ボタン
-    regenerateButton.onclick = async function() {
-        showSection(loadingSection);
-        
-        try {
-            // 検索式を再生成（異なる表現となるよう指示）
-            var searchExpression = await generateSearchExpression(currentQuery, true);
-            currentSearchExpression = searchExpression;
+    if (regenerateButton) {
+        regenerateButton.onclick = async function() {
+            showSection(loadingSection);
             
-            // バックエンドAPIでPubMedの検索結果数を取得
-            var count = await getArticleCount(searchExpression);
-            
-            // 結果の表示
-            searchExpressionElement.textContent = searchExpression;
-            articleCountElement.textContent = `検索結果: 約${count}件の論文が見つかりました`;
-            
-            // 結果セクションを表示
-            showSection(resultSection);
-        } catch (error) {
-            console.error('Error:', error);
-            alert('エラーが発生しました: ' + error.message);
-            showSection(resultSection);
-        }
-    };
+            try {
+                // 検索式を再生成（異なる表現となるよう指示）
+                var searchExpression = await generateSearchExpression(currentQuery, true);
+                currentSearchExpression = searchExpression;
+                
+                // バックエンドAPIでPubMedの検索結果数を取得
+                var count = await getArticleCount(searchExpression);
+                
+                // 結果の表示
+                searchExpressionElement.textContent = searchExpression;
+                articleCountElement.textContent = `検索結果: 約${count}件の論文が見つかりました`;
+                
+                // 結果セクションを表示
+                showSection(resultSection);
+            } catch (error) {
+                console.error('Error:', error);
+                alert('エラーが発生しました: ' + error.message);
+                showSection(resultSection);
+            }
+        };
+    }
     
     // 検索結果を取得ボタン
-    getResultsButton.onclick = async function() {
-        showSection(loadingSection);
-        
-        try {
-            // バックエンドAPIでPubMedの検索結果を取得
-            var results = await getSearchResults(currentSearchExpression);
-            searchResults = results;
+    if (getResultsButton) {
+        getResultsButton.onclick = async function() {
+            showSection(loadingSection);
             
-            // 結果数の表示
-            resultsInfoElement.textContent = `${results.length}件の論文を取得しました`;
-            
-            // 結果を表示
-            displaySearchResults(results);
-            
-            // 検索結果セクションを表示
-            showSection(articleResultsSection);
-        } catch (error) {
-            console.error('Error:', error);
-            alert('エラーが発生しました: ' + error.message);
-            showSection(resultSection);
-        }
-    };
+            try {
+                // バックエンドAPIでPubMedの検索結果を取得
+                var results = await getSearchResults(currentSearchExpression);
+                searchResults = results;
+                
+                // 結果数の表示
+                resultsInfoElement.textContent = `${results.length}件の論文を取得しました`;
+                
+                // 結果を表示
+                displaySearchResults(results);
+                
+                // 検索結果セクションを表示
+                showSection(articleResultsSection);
+            } catch (error) {
+                console.error('Error:', error);
+                alert('エラーが発生しました: ' + error.message);
+                showSection(resultSection);
+            }
+        };
+    }
     
     // 検索式画面に戻るボタン
-    backToSearchButton.onclick = function() {
-        showSection(resultSection);
-    };
+    if (backToSearchButton) {
+        backToSearchButton.onclick = function() {
+            showSection(resultSection);
+        };
+    }
     
     // 最初からやり直すボタン
-    backToStartButton.onclick = function() {
-        // フォーム内容をリセット
-        searchForm.reset();
-        
-        // 変数をクリア
-        currentQuery = '';
-        currentSearchExpression = '';
-        searchResults = [];
-        
-        // 初期フォームを表示
-        showSection(initialForm);
-    };
+    if (backToStartButton) {
+        backToStartButton.onclick = function() {
+            // フォーム内容をリセット
+            searchForm.reset();
+            
+            // 変数をクリア
+            currentQuery = '';
+            currentSearchExpression = '';
+            searchResults = [];
+            
+            // 初期フォームを表示
+            showSection(initialForm);
+        };
+    }
     
     // CSVダウンロードボタン
-    downloadCSVButton.onclick = function() {
-        if (searchResults.length === 0) {
-            alert('ダウンロードする検索結果がありません');
-            return;
-        }
-        
-        exportToCSV(searchResults);
-    };
+    if (downloadCSVButton) {
+        downloadCSVButton.onclick = function() {
+            if (searchResults.length === 0) {
+                alert('ダウンロードする検索結果がありません');
+                return;
+            }
+            
+            exportToCSV(searchResults);
+        };
+    }
     
     // バックエンドAPIを使用して検索式を生成する関数
     async function generateSearchExpression(query, alternative = false) {
@@ -272,6 +314,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 promptText += "\n- 過去5年間に出版された論文のみに限定するフィルターを含めてください";
             }
             
+            console.log('Sending request to:', `${API_BASE_URL}/api/openai`);
+            
             // バックエンドAPIにリクエスト
             const response = await fetch(`${API_BASE_URL}/api/openai`, {
                 method: 'POST',
@@ -295,6 +339,8 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             
             if (!response.ok) {
+                const errorData = await response.json();
+                console.error('API エラー詳細:', errorData);
                 throw new Error(`API エラー: ${response.status}`);
             }
             
@@ -304,7 +350,7 @@ document.addEventListener('DOMContentLoaded', function() {
             return searchExpression;
         } catch (error) {
             console.error('検索式生成中にエラーが発生しました:', error);
-            throw new Error('検索式の生成に失敗しました');
+            throw new Error('検索式の生成に失敗しました: ' + error.message);
         }
     }
     

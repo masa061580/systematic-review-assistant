@@ -520,6 +520,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // バックエンドAPIで検索結果を取得する関数
+    // バックエンドAPIで検索結果を取得する関数内の修正
     async function getSearchResults(searchExpression) {
         try {
             // 検索式をエンコード
@@ -554,14 +555,35 @@ document.addEventListener('DOMContentLoaded', function() {
             
             console.log('PubMed論文詳細取得成功');
             
+            // デバッグ用ログを追加
+            console.log('summaryData構造:', {
+                hasResult: !!summaryData.result,
+                resultKeys: summaryData.result ? Object.keys(summaryData.result) : [],
+                firstPmid: pmids[0],
+                firstArticleExists: summaryData.result ? !!summaryData.result[pmids[0]] : false
+            });
+
             // 論文データを整形
             const articlesPromises = pmids.map(async (pmid) => {
-                const article = summaryData.result[pmid];
+                // ここでエラーチェックを追加
+                const article = summaryData.result ? summaryData.result[pmid] : null;
                 
+                // summaryData.resultやarticleがnullまたはundefinedの場合、基本情報だけのオブジェクトを返す
                 if (!article) {
-                    return null;
+                    console.warn(`PMID ${pmid} のデータが取得できませんでした`);
+                    return {
+                        pmid,
+                        pubmedUrl: `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`,
+                        title: `PMID: ${pmid} (詳細情報を取得できませんでした)`,
+                        authors: '',
+                        year: '',
+                        journal: '',
+                        abstract: '',
+                        abstractSummary: '抄録を取得できませんでした'
+                    };
                 }
                 
+                // 以下は元のコードと同じ
                 // 著者情報を整形
                 let authors = '';
                 if (article.authors && article.authors.length > 0) {
